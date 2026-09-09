@@ -5,10 +5,9 @@ const app = express();
 app.use(express.json());
 
 const META_TOKEN = process.env.META_ACCESS_TOKEN;
-const PHONE_NUMBER_ID = '1285975734605370'; // Ton ID de numéro Meta
+const PHONE_NUMBER_ID = '1285975734605370';
 
 // 1. Verification du Webhook par Meta (Configuration initiale)
-// Verification du Webhook par Meta
 app.get('/webhook', (req, res) => {
   const verify_token = process.env.WEBHOOK_VERIFY_TOKEN || 'bticket_secret_token_2026';
   const mode = req.query['hub.mode'];
@@ -17,13 +16,13 @@ app.get('/webhook', (req, res) => {
 
   if (mode === 'subscribe' && token === verify_token) {
     console.log('WEBHOOK_VERIFIED');
-    res.status(200).send(challenge);
+    return res.status(200).set('Content-Type', 'text/plain').send(challenge);
   } else {
-    res.sendStatus(403);
+    return res.sendStatus(403);
   }
 });
 
-// 2. Réception et Traitement des Messages Vendeur
+// 2. Reception et Traitement des Messages Vendeur
 app.post('/webhook', async (req, res) => {
   const body = req.body;
 
@@ -33,10 +32,9 @@ app.post('/webhook', async (req, res) => {
     const message = changes?.value?.messages?.[0];
 
     if (message) {
-      const from = message.from; // Numéro du vendeur (ex: 237690000000)
+      const from = message.from;
       const text = message.text?.body?.toLowerCase();
 
-      // Logique simple d'interaction
       if (text === 'vente' || text === 'menu' || text === '1') {
         await envoyerMenuCatalogue(from);
       } else {
@@ -51,47 +49,59 @@ app.post('/webhook', async (req, res) => {
 
 // Fonction pour envoyer un message interactif (Catalogue)
 async function envoyerMenuCatalogue(to) {
-  await axios.post(
-    `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: 'whatsapp',
-      to: to,
-      type: 'interactive',
-      interactive: {
-        type: 'list',
-        header: { type: 'text', text: 'B-Ticket - Nouvelle Vente' },
-        body: { text: 'Sélectionnez l\'article vendu dans votre catalogue :' },
-        action: {
-          button: 'Voir le catalogue',
-          sections: [
-            {
-              title: 'Vos Articles',
-              rows: [
-                { id: 'art_1', title: 'T-shirt Coton', description: '5 000 FCFA' },
-                { id: 'art_2', title: 'Jean Noir', description: '12 000 FCFA' },
-                { id: 'art_free', title: 'Article Hors Catalogue', description: 'Saisie prix libre' }
-              ]
-            }
-          ]
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: to,
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          header: { type: 'text', text: 'B-Ticket - Nouvelle Vente' },
+          body: { text: "Sélectionnez l'article vendu dans votre catalogue :" },
+          action: {
+            button: 'Voir le catalogue',
+            sections: [
+              {
+                title: 'Vos Articles',
+                rows: [
+                  { id: 'art_1', title: 'T-shirt Coton', description: '5 000 FCFA' },
+                  { id: 'art_2', title: 'Jean Noir', description: '12 000 FCFA' },
+                  { id: 'art_free', title: 'Article Hors Catalogue', description: 'Saisie prix libre' }
+                ]
+              }
+            ]
+          }
         }
-      }
-    },
-    { headers: { Authorization: `Bearer ${META_TOKEN}` } }
-  );
+      },
+      { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+    );
+  } catch (error) {
+    console.error("Erreur lors de l'envoi du menu:", error.response?.data || error.message);
+  }
 }
 
 // Fonction utilitaire d'envoi de texte
 async function envoyerMessageTexte(to, text) {
-  await axios.post(
-    `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: 'whatsapp',
-      to: to,
-      type: 'text',
-      text: { body: text }
-    },
-    { headers: { Authorization: `Bearer ${META_TOKEN}` } }
-  );
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: to,
+        type: 'text',
+        text: { body: text }
+      },
+      { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+    );
+  } catch (error) {
+    console.error("Erreur lors de l'envoi du texte:", error.response?.data || error.message);
+  }
 }
 
-app.listen(3000, () => console.log('Webhook B-Ticket actif sur le port 3000'));
+// Port dynamique pour Render
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Webhook B-Ticket actif sur le port ${PORT}`);
+});
