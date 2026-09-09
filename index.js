@@ -8,13 +8,15 @@ const META_TOKEN = process.env.META_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = '1285975734605370'; // Ton ID de numéro Meta
 
 // 1. Verification du Webhook par Meta (Configuration initiale)
+// Verification du Webhook par Meta
 app.get('/webhook', (req, res) => {
-  const verify_token = process.env.WEBHOOK_VERIFY_TOKEN;
+  const verify_token = process.env.WEBHOOK_VERIFY_TOKEN || 'bticket_secret_token_2026';
   const mode = req.query['hub.mode'];
-  const token = req.query['hub.challenge'];
+  const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode && token === verify_token) {
+  if (mode === 'subscribe' && token === verify_token) {
+    console.log('WEBHOOK_VERIFIED');
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
