@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 const META_TOKEN = process.env.META_ACCESS_TOKEN;
-const PHONE_NUMBER_ID = '1285975734605370';
+const PHONE_NUMBER_ID = '1279459025258537';
 
 // 1. Verification du Webhook par Meta (Configuration initiale)
 app.get('/webhook', (req, res) => {
