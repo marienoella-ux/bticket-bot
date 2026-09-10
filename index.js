@@ -5,9 +5,9 @@ const app = express();
 app.use(express.json());
 
 const META_TOKEN = process.env.META_ACCESS_TOKEN;
-const PHONE_NUMBER_ID = '1279459025258537';
+const PHONE_NUMBER_ID = '1279459025258537'; // Ton ID de test valide
 
-// 1. Verification du Webhook par Meta (Configuration initiale)
+// 1. Verification du Webhook par Meta
 app.get('/webhook', (req, res) => {
   const verify_token = process.env.WEBHOOK_VERIFY_TOKEN || 'bticket_secret_token_2026';
   const mode = req.query['hub.mode'];
@@ -35,6 +35,8 @@ app.post('/webhook', async (req, res) => {
       const from = message.from;
       const text = message.text?.body?.toLowerCase();
 
+      console.log(`[MESSAGE REÇU] De: ${from} | Texte: ${text}`);
+
       if (text === 'vente' || text === 'menu' || text === '1') {
         await envoyerMenuCatalogue(from);
       } else {
@@ -50,7 +52,7 @@ app.post('/webhook', async (req, res) => {
 // Fonction pour envoyer un message interactif (Catalogue)
 async function envoyerMenuCatalogue(to) {
   try {
-    await axios.post(
+    const res = await axios.post(
       `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: 'whatsapp',
@@ -77,8 +79,9 @@ async function envoyerMenuCatalogue(to) {
       },
       { headers: { Authorization: `Bearer ${META_TOKEN}` } }
     );
+    console.log('[ENVOI REUSSI] Catalogue envoyé avec succès à', to);
   } catch (error) {
-    console.error("Erreur lors de l'envoi du menu:", error.response?.data || error.message);
+    console.error("[ERREUR ENVOI CATALOGUE]:", error.response?.data || error.message);
   }
 }
 
@@ -95,12 +98,12 @@ async function envoyerMessageTexte(to, text) {
       },
       { headers: { Authorization: `Bearer ${META_TOKEN}` } }
     );
+    console.log('[ENVOI REUSSI] Texte envoyé avec succès à', to);
   } catch (error) {
-    console.error("Erreur lors de l'envoi du texte:", error.response?.data || error.message);
+    console.error("[ERREUR ENVOI TEXTE]:", error.response?.data || error.message);
   }
 }
 
-// Port dynamique pour Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Webhook B-Ticket actif sur le port ${PORT}`);
