@@ -114,3 +114,9 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Webhook B-Ticket actif sur le port ${PORT}`);
 });
+
+// Page de politique de confidentialité requise par Meta
+app.get('/privacy', (req, res) => {
+  res.send('<h1>Politique de Confidentialité - B-Ticket</h1><p>B-Ticket utilise uniquement vos données WhatsApp pour le traitement automatique des reçus et catalogues. Aucune donnée personnelle n\'est conservée ou partagée avec des tiers.</p>');
+});
+
