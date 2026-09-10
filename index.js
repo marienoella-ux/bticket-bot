@@ -5,9 +5,8 @@ const app = express();
 app.use(express.json());
 
 const META_TOKEN = process.env.META_ACCESS_TOKEN;
-const PHONE_NUMBER_ID = '1279459025258537'; // Ton ID de test valide
 
-// 1. Verification du Webhook par Meta
+// 1. Vérification du Webhook par Meta
 app.get('/webhook', (req, res) => {
   const verify_token = process.env.WEBHOOK_VERIFY_TOKEN || 'bticket_secret_token_2026';
   const mode = req.query['hub.mode'];
@@ -22,25 +21,32 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// 2. Reception et Traitement des Messages Vendeur
+// 2. Réception et Traitement des Messages
 app.post('/webhook', async (req, res) => {
   const body = req.body;
+
+  // Log complet pour voir TOUT ce que Meta envoie dès qu'un message arrive
+  console.log('[PAYLOAD REÇU EN BRUT]:', JSON.stringify(body, null, 2));
 
   if (body.object === 'whatsapp_business_account') {
     const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
+    const value = changes?.value;
+    const message = value?.messages?.[0];
+
+    // Récupération dynamique de l'ID du numéro de téléphone qui a reçu le message
+    const phoneNumberId = value?.metadata?.phone_number_id || '1279459025258537';
 
     if (message) {
       const from = message.from;
       const text = message.text?.body?.toLowerCase();
 
-      console.log(`[MESSAGE REÇU] De: ${from} | Texte: ${text}`);
+      console.log(`[MESSAGE REÇU] De: ${from} | Texte: ${text} | PhoneID: ${phoneNumberId}`);
 
       if (text === 'vente' || text === 'menu' || text === '1') {
-        await envoyerMenuCatalogue(from);
+        await envoyerMenuCatalogue(from, phoneNumberId);
       } else {
-        await envoyerMessageTexte(from, "Bienvenue sur B-Ticket ! Envoyez *VENTE* pour émettre un reçu.");
+        await envoyerMessageTexte(from, "Bienvenue sur B-Ticket ! Envoyez *VENTE* pour émettre un reçu.", phoneNumberId);
       }
     }
     res.sendStatus(200);
@@ -49,11 +55,11 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Fonction pour envoyer un message interactif (Catalogue)
-async function envoyerMenuCatalogue(to) {
+// Fonction pour envoyer le catalogue
+async function envoyerMenuCatalogue(to, phoneId) {
   try {
-    const res = await axios.post(
-      `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
       {
         messaging_product: 'whatsapp',
         to: to,
@@ -79,17 +85,17 @@ async function envoyerMenuCatalogue(to) {
       },
       { headers: { Authorization: `Bearer ${META_TOKEN}` } }
     );
-    console.log('[ENVOI REUSSI] Catalogue envoyé avec succès à', to);
+    console.log('[ENVOI REUSSI] Catalogue envoyé à', to);
   } catch (error) {
     console.error("[ERREUR ENVOI CATALOGUE]:", error.response?.data || error.message);
   }
 }
 
 // Fonction utilitaire d'envoi de texte
-async function envoyerMessageTexte(to, text) {
+async function envoyerMessageTexte(to, text, phoneId) {
   try {
     await axios.post(
-      `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
       {
         messaging_product: 'whatsapp',
         to: to,
@@ -98,7 +104,7 @@ async function envoyerMessageTexte(to, text) {
       },
       { headers: { Authorization: `Bearer ${META_TOKEN}` } }
     );
-    console.log('[ENVOI REUSSI] Texte envoyé avec succès à', to);
+    console.log('[ENVOI REUSSI] Texte envoyé à', to);
   } catch (error) {
     console.error("[ERREUR ENVOI TEXTE]:", error.response?.data || error.message);
   }
