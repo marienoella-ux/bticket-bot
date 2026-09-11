@@ -176,7 +176,7 @@ async function enregistrerArticlesCatalogue(phone, rawText, phoneId) {
 
     if (error) {
       console.error("[ERREUR SUPABASE PRODUCTS]:", error);
-      return await envoyerTexte(phone, "❌ Une erreur est survenue lors de l'enregistrement de vos articles.", phoneId);
+      return await envoyerTexte(phone, `❌ Erreur Supabase : ${error.message || JSON.stringify(error)}`, phoneId);
     }
 
     let messageConfirmation = `✅ *${productsToInsert.length} article(s) ajouté(s) à votre catalogue !*\n\n`;
