@@ -45,7 +45,6 @@ app.post('/webhook', async (req, res) => {
     if (message) {
       const from = message.from; // Numéro WhatsApp du vendeur
       
-      // Extraction du texte ou du choix dans un menu interactif
       let userText = '';
       if (message.type === 'text') {
         userText = message.text.body.trim();
@@ -55,7 +54,6 @@ app.post('/webhook', async (req, res) => {
 
       console.log(`[MESSAGE REÇU] De: ${from} | Contenu: ${userText}`);
 
-      // Gestion du Router d'état utilisateur
       await traiterMessageEntrant(from, userText, phoneNumberId);
     }
     res.sendStatus(200);
@@ -89,7 +87,6 @@ async function traiterMessageEntrant(phone, text, phoneId) {
       const firstName = conv.data.first_name;
       const shopName = text;
 
-      // Création du compte utilisateur (en attente de paiement)
       await supabase.from('users').insert([{
         phone_number: phone,
         first_name: firstName,
@@ -128,35 +125,91 @@ async function traiterMessageEntrant(phone, text, phoneId) {
 
     if (textLower === 'vente' || textLower === 'menu' || textLower === '1') {
       await ouvrirCatalogueVendeur(phone, user, phoneId);
-    } else {
+    } 
+    // Détection de l'ajout d'articles (Si le texte contient une virgule ex: "T-shirt Coton, 5000")
+    else if (text.includes(',')) {
+      await enregistrerArticlesCatalogue(phone, text, phoneId);
+    } 
+    else {
       await envoyerTexte(
         phone,
         `Bonjour *${user.first_name}* (${user.shop_name}) ! 👋\n` +
         `Solde de reçus : *${user.receipt_quota} restants*\n\n` +
-        `Envoyez *VENTE* pour émettre un nouveau reçu.`,
+        `• Envoyez *VENTE* pour émettre un nouveau reçu.\n` +
+        `• Pour ajouter des articles à votre catalogue, envoyez-les au format :\n` +
+        `  _Nom de l'article, Prix_\n` +
+        `  _(Exemple : Pantalon Jean, 12000)_`,
         phoneId
       );
     }
   }
 }
 
+// Fonction pour enregistrer des articles dans le catalogue Supabase
+async function enregistrerArticlesCatalogue(phone, rawText, phoneId) {
+  // Découper par ligne au cas où plusieurs articles sont envoyés d'un coup
+  const lines = rawText.split('\n');
+  const productsToInsert = [];
+  let errorCount = 0;
+
+  for (const line of lines) {
+    const parts = line.split(',');
+    if (parts.length >= 2) {
+      const name = parts[0].trim();
+      const priceStr = parts[1].replace(/[^0-9]/g, ''); // Extraire uniquement les chiffres
+      const price = parseInt(priceStr, 10);
+
+      if (name && !isNaN(price) && price > 0) {
+        productsToInsert.push({
+          user_phone: phone,
+          name: name,
+          price: price
+        });
+      } else {
+        errorCount++;
+      }
+    }
+  }
+
+  if (productsToInsert.length > 0) {
+    const { error } = await supabase.from('products').insert(productsToInsert);
+
+    if (error) {
+      console.error("[ERREUR SUPABASE PRODUCTS]:", error);
+      return await envoyerTexte(phone, "❌ Une erreur est survenue lors de l'enregistrement de vos articles.", phoneId);
+    }
+
+    let messageConfirmation = `✅ *${productsToInsert.length} article(s) ajouté(s) à votre catalogue !*\n\n`;
+    productsToInsert.forEach(p => {
+      messageConfirmation += `• *${p.name}* : ${p.price.toLocaleString()} FCFA\n`;
+    });
+    messageConfirmation += `\nEnvoyez *VENTE* pour voir votre catalogue mis à jour !`;
+
+    await envoyerTexte(phone, messageConfirmation, phoneId);
+  } else {
+    await envoyerTexte(
+      phone,
+      `⚠️ Aucun article valide détecté.\n\nAssurez-vous d'utiliser le format :\n*Nom de l'article, Prix*\n\n_Exemple : Chaussures Cuir, 15000_`,
+      phoneId
+    );
+  }
+}
+
 // Fonction d'envoi du catalogue Supabase
 async function ouvrirCatalogueVendeur(phone, user, phoneId) {
-  // Récupérer le catalogue de cet utilisateur dans Supabase
   let { data: products } = await supabase.from('products').select('*').eq('user_phone', phone);
 
   if (!products || products.length === 0) {
     return await envoyerTexte(
       phone,
       `Votre catalogue est actuellement vide.\n\n` +
-      `Pour ajouter vos articles, envoyez-nous la liste sous la forme :\n` +
-      `*Article, Prix*\n` +
-      `Exemple : _T-shirt Coton, 5000_`,
+      `Pour ajouter vos articles, envoyez-les sous le format :\n` +
+      `*Article, Prix*\n\n` +
+      `Exemple :\n_T-shirt Coton, 5000_\n_Jean Noir, 12000_`,
       phoneId
     );
   }
 
-  // Transformer les produits en lignes interactives pour WhatsApp
   const rows = products.slice(0, 10).map(p => ({
     id: `prod_${p.id}`,
     title: p.name.substring(0, 24),
