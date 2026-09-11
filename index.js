@@ -35,7 +35,7 @@ app.post('/webhook', async (req, res) => {
     const message = value?.messages?.[0];
 
     // Récupération dynamique de l'ID du numéro de téléphone qui a reçu le message
-    const phoneNumberId = value?.metadata?.phone_number_id || '1279459025258537';
+    const phoneNumberId = value?.metadata?.phone_number_id || '1285975734605370';
 
     if (message) {
       const from = message.from;
