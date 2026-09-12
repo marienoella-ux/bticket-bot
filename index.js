@@ -224,6 +224,32 @@ async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
     console.error("Erreur afficherRecuEbauche:", err.response ? err.response.data : err.message);
   }
 }
+// ==========================================
+// UPLOAD DE L'IMAGE DU REÇU VERS META WHATSAPP
+// ==========================================
+async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
+  try {
+    const form = new FormData();
+    form.append('file', imageBuffer, { filename: 'recu.png', contentType: mimeType });
+    form.append('type', 'image');
+    form.append('messaging_product', 'whatsapp');
+
+    const res = await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneId}/media`,
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`
+        }
+      }
+    );
+    return res;
+  } catch (err) {
+    console.error("Erreur uploaderMediaWhatsApp:", err.response ? err.response.data : err.message);
+    return null;
+  }
+}
 
 // 6. Uploader l'image vers l'API WhatsApp Media
 // GENERATION IMAGE REÇU (CHARTE B-TICKET)
