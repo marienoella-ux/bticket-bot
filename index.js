@@ -164,16 +164,16 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.strokeStyle = papierTicket;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(140, 50);
-    ctx.lineTo(140, 130);
+    ctx.moveTo(115, 50);
+    ctx.lineTo(115, 130);
     ctx.stroke();
     ctx.setLineDash([]);
 
     // Logo Texte
     ctx.fillStyle = papierTicket;
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillText('B', 80, 102);
-    ctx.fillText('Ticket', 165, 102);
+    ctx.font = 'bold 38px sans-serif';
+    ctx.fillText('B', 70, 102);
+    ctx.fillText('Ticket', 130, 102);
 
     // 3. Infos Boutique & Reçu
     const receiptNum = `#${Math.floor(1000 + Math.random() * 9000)}`;
@@ -216,7 +216,7 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
 
     ctx.font = '18px monospace';
     ctx.fillText(`${data.quantity}`, 380, 400);
-    ctx.fillText(`${(data.final_price / data.quantity).toLocaleString()}`, 480, 400);
+    ctx.fillText(`${Math.round(data.final_price / data.quantity).toLocaleString('fr-FR')}`, 480, 400);
 
     // Ajustement P.U arrondi (pour éviter les centimes)
     const unitPrice = Math.round(data.final_price / data.quantity);
