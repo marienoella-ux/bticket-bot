@@ -9,8 +9,8 @@ app.use(express.json());
 
 // --- VARIABLES D'ENVIRONNEMENT ---
 const PORT = process.env.PORT || 3000;
-const META_ACCESS_TOKEN = process.env.WHATSAPP_TOKEN;
-const WEBHOOK_VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+const WEBHOOK_VERIFY_TOKEN = process.env.WEBHOOK_VERIFY_TOKEN;
 const ADMIN_PHONE = process.env.ADMIN_PHONE ? process.env.ADMIN_PHONE.replace(/[^0-9]/g, '') : '';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
