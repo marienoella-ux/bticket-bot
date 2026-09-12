@@ -35,9 +35,14 @@ app.post('/webhook', async (req, res) => {
 
       if (message.type === 'text') {
         userText = message.text.body.trim();
-      } else if (message.type === 'interactive' && message.interactive.list_reply) {
-        interactiveId = message.interactive.list_reply.id;
-        userText = message.interactive.list_reply.title;
+      } else if (message.type === 'interactive') {
+        if (message.interactive.list_reply) {
+          interactiveId = message.interactive.list_reply.id;
+          userText = message.interactive.list_reply.title;
+        } else if (message.interactive.button_reply) {
+          interactiveId = message.interactive.button_reply.id;
+          userText = message.interactive.button_reply.title;
+        }
       }
 
       await traiterMessageEntrant(from, userText, interactiveId, phoneNumberId);
@@ -47,6 +52,8 @@ app.post('/webhook', async (req, res) => {
     res.sendStatus(404);
   }
 });
+
+// --- ROUTER DE CONVERSATION ---
 
 async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
@@ -78,50 +85,119 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   if (user && user.is_approved) {
     const textLower = text.toLowerCase();
 
-    // Selection article
+    // A. Action de relance ou réinitialisation
+    if (interactiveId === 'btn_add_more') {
+      return await ouvrirCatalogueVendeur(phone, user, phoneId);
+    }
+
+    if (interactiveId === 'btn_finish_cart') {
+      await supabase.from('conversations').update({ step: 'SALE_CLIENT_NAME' }).eq('phone_number', phone);
+      return await envoyerTexte(phone, "Quel est le *Nom du client* ?", phoneId);
+    }
+
+    if (interactiveId === 'btn_cancel_sale') {
+      await supabase.from('conversations').delete().eq('phone_number', phone);
+      return await envoyerTexte(phone, "❌ Vente annulée. Envoyez *VENTE* pour recommencer.", phoneId);
+    }
+
+    if (interactiveId === 'btn_validate_recu') {
+      if (conv && conv.data) {
+        const clientName = conv.data.client_name;
+        const items = conv.data.items || [];
+        
+        await supabase.from('conversations').delete().eq('phone_number', phone);
+        await envoyerTexte(phone, "⏳ Génération de votre reçu officiel B-Ticket en cours...", phoneId);
+        await genererEtEnvoyerRecu(phone, user, items, clientName, phoneId);
+      }
+      return;
+    }
+
+    // B. Sélection d'un article dans le catalogue
     if (interactiveId && interactiveId.startsWith('prod_')) {
       const productId = interactiveId.replace('prod_', '');
       const { data: product } = await supabase.from('products').select('*').eq('id', productId).single();
 
       if (product) {
-        await supabase.from('conversations').upsert({ phone_number: phone, step: 'SALE_QTY', data: { product_name: product.name, unit_price: product.price } });
-        return await envoyerTexte(phone, `📦 *${product.name}*\nPrix catalogue : ${product.price.toLocaleString()} FCFA\n\nEntrez la *quantité vendue* (ex: 1, 2) :`, phoneId);
+        const currentItems = conv?.data?.items || [];
+        await supabase.from('conversations').upsert({
+          phone_number: phone,
+          step: 'SALE_QTY',
+          data: { items: currentItems, current_product: { name: product.name, unit_price: product.price } }
+        });
+        return await envoyerTexte(phone, `📦 Article : *${product.name}*\nPrix catalogue : ${product.price.toLocaleString('fr-FR')} FCFA\n\nEntrez la *quantité vendue* (ex: 1, 2) :`, phoneId);
       }
     }
 
-    // Saisie Quantité
+    // C. Saisie Quantité
     if (conv && conv.step === 'SALE_QTY') {
       const qty = parseInt(text.replace(/[^0-9]/g, ''), 10);
       if (isNaN(qty) || qty <= 0) return await envoyerTexte(phone, "⚠️ Entrez une quantité valide.", phoneId);
 
-      await supabase.from('conversations').update({ step: 'SALE_PRICE', data: { ...conv.data, quantity: qty } }).eq('phone_number', phone);
-      return await envoyerTexte(phone, `Quantité : *${qty}*\n\nEntrez le *prix final convenu* avec le client (en FCFA) :`, phoneId);
+      const currentProduct = conv.data.current_product;
+      
+      await supabase.from('conversations').update({
+        step: 'SALE_PRICE',
+        data: { ...conv.data, current_qty: qty }
+      }).eq('phone_number', phone);
+
+      return await envoyerTexte(phone, `Quantité : *${qty}*\n\nEntrez le *prix final total convenu* pour cet article (en FCFA) :`, phoneId);
     }
 
-    // Saisie Prix Final
+    // D. Saisie Prix Final de cet article
     if (conv && conv.step === 'SALE_PRICE') {
       const finalPrice = parseInt(text.replace(/[^0-9]/g, ''), 10);
       if (isNaN(finalPrice) || finalPrice <= 0) return await envoyerTexte(phone, "⚠️ Entrez un montant valide en FCFA.", phoneId);
 
-      await supabase.from('conversations').update({ step: 'SALE_CLIENT_NAME', data: { ...conv.data, final_price: finalPrice } }).eq('phone_number', phone);
-      return await envoyerTexte(phone, "Quel est le *Nom du client* ?", phoneId);
+      const items = conv.data.items || [];
+      items.push({
+        name: conv.data.current_product.name,
+        qty: conv.data.current_qty,
+        total_price: finalPrice
+      });
+
+      await supabase.from('conversations').update({
+        step: 'CART_MENU',
+        data: { items: items }
+      }).eq('phone_number', phone);
+
+      // Proposer d'ajouter un autre produit ou terminer
+      return await envoyerBoutonsCart(phone, items, phoneId);
     }
 
-    // Saisie Nom Client -> Génération de l'image
+    // E. Saisie du Nom du Client & Affichage de l'Ébauche
     if (conv && conv.step === 'SALE_CLIENT_NAME') {
       const clientName = text;
-      const data = conv.data;
+      const items = conv.data.items || [];
 
-      // Nettoyer l'état de conversation
-      await supabase.from('conversations').delete().eq('phone_number', phone);
+      let totalVente = 0;
+      let recapText = `🧾 *ÉBAUCHE DU REÇU B-TICKET*\n`;
+      recapText += `-----------------------------------\n`;
+      recapText += `🏪 *Boutique :* ${user.shop_name}\n`;
+      recapText += `👤 *Client :* ${clientName}\n\n`;
+      recapText += `*ARTICLES :*\n`;
 
-      // Générer l'image du reçu
-      await envoyerTexte(phone, "⏳ Génération de votre reçu officiel B-Ticket en cours...", phoneId);
-      await genererEtEnvoyerRecu(phone, user, data, clientName, phoneId);
-      return;
+      items.forEach((item, index) => {
+        totalVente += item.total_price;
+        recapText += `${index + 1}. *${item.name}* (x${item.qty}) - ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
+      });
+
+      recapText += `-----------------------------------\n`;
+      recapText += `💰 *TOTAL FINAL : ${totalVente.toLocaleString('fr-FR')} FCFA*\n\n`;
+      recapText += `Veuillez vérifier les informations ci-dessus avant de générer l'image du reçu.`;
+
+      await supabase.from('conversations').update({
+        step: 'VALIDE_EBAUCHE',
+        data: { items: items, client_name: clientName }
+      }).eq('phone_number', phone);
+
+      await envoyerTexte(phone, recapText, phoneId);
+      return await envoyerBoutonsValidation(phone, phoneId);
     }
 
+    // Menu général
     if (textLower === 'vente' || textLower === 'menu' || textLower === '1') {
+      // Nouvelle vente : on réinitialise la conversation
+      await supabase.from('conversations').delete().eq('phone_number', phone);
       await ouvrirCatalogueVendeur(phone, user, phoneId);
     } else if (text.includes(',')) {
       await enregistrerArticlesCatalogue(phone, text, phoneId);
@@ -131,15 +207,17 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   }
 }
 
-// GENERATION IMAGE REÇU (CHARTE B-TICKET)
-async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
+// GENERATION IMAGE REÇU MULTI-ARTICLES (CHARTE B-TICKET)
+async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
+    const baseHeight = 650;
+    const itemHeight = 40;
+    const height = baseHeight + (items.length * itemHeight);
     const width = 600;
-    const height = 800;
+
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Couleurs Charte
     const papierTicket = '#FBF6EC';
     const encreMarche = '#015E54';
     const ambreVif = '#F2A63A';
@@ -149,18 +227,16 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.fillStyle = papierTicket;
     ctx.fillRect(0, 0, width, height);
 
-    // 2. En-tête Badge B-Ticket
+    // 2. En-tête Badge
     ctx.fillStyle = encreMarche;
     ctx.fillRect(40, 40, width - 80, 100);
 
-    // Encoches ticket
     ctx.fillStyle = papierTicket;
     ctx.beginPath();
     ctx.arc(40, 90, 15, 0, Math.PI * 2);
     ctx.arc(width - 40, 90, 15, 0, Math.PI * 2);
     ctx.fill();
 
-    // Ligne perforée
     ctx.strokeStyle = papierTicket;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
@@ -169,13 +245,12 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Logo Texte
     ctx.fillStyle = papierTicket;
     ctx.font = 'bold 38px sans-serif';
     ctx.fillText('B', 70, 102);
     ctx.fillText('Ticket', 130, 102);
 
-    // 3. Infos Boutique & Reçu
+    // 3. Infos Boutique
     const receiptNum = `#${Math.floor(1000 + Math.random() * 9000)}`;
     const dateStr = new Date().toLocaleDateString('fr-FR');
 
@@ -187,7 +262,6 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.font = '18px monospace';
     ctx.fillText(`N° ${receiptNum}  |  Date: ${dateStr}`, 50, 220);
 
-    // Ligne séparatrice
     ctx.strokeStyle = encreDouce;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -195,7 +269,7 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.lineTo(width - 50, 250);
     ctx.stroke();
 
-    // 4. Details Client & Article
+    // 4. Details Client
     ctx.fillStyle = encreDouce;
     ctx.font = '16px sans-serif';
     ctx.fillText('CLIENT:', 50, 290);
@@ -203,53 +277,57 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.font = 'bold 20px sans-serif';
     ctx.fillText(clientName, 130, 290);
 
-    // Tableau Article
+    // Tableau Articles
+    let currentY = 350;
     ctx.fillStyle = encreDouce;
     ctx.font = '16px sans-serif';
-    ctx.fillText('ARTICLE', 50, 360);
-    ctx.fillText('QTY', 380, 360);
-    ctx.fillText('P.U', 480, 360);
+    ctx.fillText('ARTICLE', 50, currentY);
+    ctx.fillText('QTY', 380, currentY);
+    ctx.fillText('P.U', 480, currentY);
 
-    ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(data.product_name, 50, 400);
+    let totalGlobal = 0;
+    currentY += 35;
 
-    ctx.font = '18px monospace';
-    ctx.fillText(`${data.quantity}`, 380, 400);
-    ctx.fillText(`${Math.round(data.final_price / data.quantity).toLocaleString('fr-FR')}`, 480, 400);
+    items.forEach(item => {
+      const unitPrice = Math.round(item.total_price / item.qty);
+      totalGlobal += item.total_price;
 
-    // Ajustement P.U arrondi (pour éviter les centimes)
-    const unitPrice = Math.round(data.final_price / data.quantity);
-    ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 480, 400);
+      ctx.fillStyle = encreMarche;
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(item.name.substring(0, 22), 50, currentY);
 
-    // Encadré TOTAL
+      ctx.font = '18px monospace';
+      ctx.fillText(`${item.qty}`, 380, currentY);
+      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 480, currentY);
+
+      currentY += itemHeight;
+    });
+
+    // 5. Encadré TOTAL
+    currentY += 20;
     ctx.fillStyle = ambreVif;
-    ctx.fillRect(50, 480, width - 100, 90);
+    ctx.fillRect(50, currentY, width - 100, 90);
 
     ctx.fillStyle = encreMarche;
     ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('TOTAL PAYÉ', 80, 532);
+    ctx.fillText('TOTAL PAYÉ', 80, currentY + 52);
 
-    // Montant TOTAL aligné à droite
     ctx.font = 'bold 32px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`${data.final_price.toLocaleString('fr-FR')} FCFA`, width - 80, 532);
+    ctx.fillText(`${totalGlobal.toLocaleString('fr-FR')} FCFA`, width - 80, currentY + 52);
 
-    // Réinitialiser l'alignement pour le reste du texte
     ctx.textAlign = 'left';
-    
+
     // 6. Pied de page
     ctx.fillStyle = encreDouce;
     ctx.font = '14px sans-serif';
-    ctx.fillText('Merci pour votre confiance !', 200, 680);
+    ctx.fillText('Merci pour votre confiance !', 200, currentY + 140);
     ctx.font = '12px sans-serif';
-    ctx.fillText('Fait avec B-Ticket • Un produit Brainiacs', 180, 740);
+    ctx.fillText('Fait avec B-Ticket • Un produit Brainiacs', 180, currentY + 180);
 
-    // Conversion Image Buffer
+    // Buffer & Envoi
     const imageBuffer = canvas.toBuffer('image/png');
-
-    // Téléversement Media Meta API
     const FormData = require('form-data');
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
@@ -261,30 +339,87 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
       { headers: { ...form.getHeaders(), Authorization: `Bearer ${META_TOKEN}` } }
     );
 
-    const mediaId = mediaRes.data.id;
-
-    // Envoi de l'image sur WhatsApp
     await axios.post(
       `https://graph.facebook.com/v20.0/${phoneId}/messages`,
       {
         messaging_product: 'whatsapp',
         to: phone,
         type: 'image',
-        image: { id: mediaId, caption: `Voici le reçu pour *${clientName}* ! Prêt à être transféré. 🧾` }
+        image: { id: mediaRes.data.id, caption: `Voici le reçu pour *${clientName}* ! Prêt à être transféré. 🧾` }
       },
       { headers: { Authorization: `Bearer ${META_TOKEN}` } }
     );
 
-    // Décompte du Quota
+    // Décompte Quota
     await supabase.from('users').update({ receipt_quota: user.receipt_quota - 1 }).eq('phone_number', phone);
 
   } catch (error) {
-    console.error("[ERREUR GENERATION RECU IMAGE]:", error.response?.data || error.message);
-    await envoyerTexte(phone, "❌ Une erreur est survenue lors de la création de l'image du reçu.", phoneId);
+    console.error("[ERREUR GENERATION RECU]:", error.response?.data || error.message);
+    await envoyerTexte(phone, "❌ Erreur lors de la création de l'image du reçu.", phoneId);
   }
 }
 
-// Helpers habituels
+// Helper : Boutons de gestion du panier
+async function envoyerBoutonsCart(to, items, phoneId) {
+  let text = `🛒 *Panier actuel (${items.length} article(s)) :*\n`;
+  items.forEach((item, index) => {
+    text += `• ${item.name} (x${item.qty}) : ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
+  });
+  text += `\nQue souhaitez-vous faire ?`;
+
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: text },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'btn_add_more', title: '➕ Ajouter article' } },
+              { type: 'reply', reply: { id: 'btn_finish_cart', title: '✅ Terminer & Valider' } }
+            ]
+          }
+        }
+      },
+      { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+    );
+  } catch (error) {
+    console.error("[ERREUR BOUTONS CART]:", error.response?.data || error.message);
+  }
+}
+
+// Helper : Boutons de validation de l'ébauche
+async function envoyerBoutonsValidation(to, phoneId) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: "Confirmez-vous l'émission du reçu ?" },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'btn_validate_recu', title: '🚀 Générer Reçu' } },
+              { type: 'reply', reply: { id: 'btn_cancel_sale', title: '✏️ Annuler / Modifier' } }
+            ]
+          }
+        }
+      },
+      { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+    );
+  } catch (error) {
+    console.error("[ERREUR BOUTONS VALIDATION]:", error.response?.data || error.message);
+  }
+}
+
+// Helpers génériques
 async function enregistrerArticlesCatalogue(phone, rawText, phoneId) {
   const lines = rawText.split('\n');
   const productsToInsert = [];
@@ -309,7 +444,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
   const rows = products.slice(0, 10).map(p => ({
     id: `prod_${p.id}`,
     title: p.name.substring(0, 24),
-    description: `${p.price.toLocaleString()} FCFA`
+    description: `${p.price.toLocaleString('fr-FR')} FCFA`
   }));
 
   await axios.post(
@@ -339,3 +474,4 @@ async function envoyerTexte(to, text, phoneId) {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`B-Ticket Bot actif sur le port ${PORT}`); });
+    
