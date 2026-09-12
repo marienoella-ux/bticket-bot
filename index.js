@@ -520,4 +520,57 @@ async function envoyerBoutonsValidation(to, phoneId) {
   }
 }
 
-async function enregistrerArticlesCatalog
+async function enregistrerArticlesCatalogue(phone, rawText, phoneId) {
+  const lines = rawText.split('\n');
+  const productsToInsert = [];
+  for (const line of lines) {
+    const parts = line.split(',');
+    if (parts.length >= 2) {
+      const name = parts[0].trim();
+      const price = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
+      if (name && !isNaN(price) && price > 0) productsToInsert.push({ user_phone: phone, name, price });
+    }
+  }
+  if (productsToInsert.length > 0) {
+    await supabase.from('products').insert(productsToInsert);
+    await envoyerTexte(phone, `✅ *${productsToInsert.length} article(s) ajouté(s) !*`, phoneId);
+  }
+}
+
+async function ouvrirCatalogueVendeur(phone, user, phoneId) {
+  let { data: products } = await supabase.from('products').select('*').eq('user_phone', phone);
+  if (!products || products.length === 0) return await envoyerTexte(phone, `Votre catalogue est vide. Envoyez au format :\n*Nom, Prix*`, phoneId);
+
+  const rows = products.slice(0, 10).map(p => ({
+    id: `prod_${p.id}`,
+    title: p.name.substring(0, 24),
+    description: `${p.price.toLocaleString('fr-FR')} FCFA`
+  }));
+
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        header: { type: 'text', text: `B-Ticket - ${user.shop_name}` },
+        body: { text: "Sélectionnez l'article vendu :" },
+        action: { button: 'Voir le catalogue', sections: [{ title: 'Articles', rows }] }
+      }
+    },
+    { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+  );
+}
+
+async function envoyerTexte(to, text, phoneId) {
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+    { messaging_product: 'whatsapp', to, type: 'text', text: { body: text } },
+    { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+  );
+}
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => { console.log(`B-Ticket Bot actif sur le port ${PORT}`); });
