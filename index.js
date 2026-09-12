@@ -240,7 +240,7 @@ async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
       {
         headers: {
           ...form.getHeaders(),
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`
         }
       }
     );
@@ -767,7 +767,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         }
 
         await envoyerTexte(phone, `⚡ Mode Express : ${items.length} article(s) détecté(s). Génération du reçu en cours...`, phoneId);
-        return await genererEtEnvoyerRecu(phone, user, items, clientName, phoneId);
+        return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
       }
     }
 
@@ -777,7 +777,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
     if (interactiveId === 'btn_finish_cart') {
       await supabase.from('conversations').update({ step: 'SALE_CLIENT_NAME' }).eq('phone_number', phone);
-      return await envoyerDemandeClient(phone, phoneId);
+      return await genererEtEnvoyerRecu(phone, phoneId);
     }
 
     if (interactiveId === 'btn_client_default') {
