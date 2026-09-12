@@ -218,17 +218,27 @@ async function genererEtEnvoyerRecu(phone, user, data, clientName, phoneId) {
     ctx.fillText(`${data.quantity}`, 380, 400);
     ctx.fillText(`${(data.final_price / data.quantity).toLocaleString()}`, 480, 400);
 
-    // 5. Encadré TOTAL
+    // Ajustement P.U arrondi (pour éviter les centimes)
+    const unitPrice = Math.round(data.final_price / data.quantity);
+    ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 480, 400);
+
+    // Encadré TOTAL
     ctx.fillStyle = ambreVif;
     ctx.fillRect(50, 480, width - 100, 90);
 
     ctx.fillStyle = encreMarche;
     ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
     ctx.fillText('TOTAL PAYÉ', 80, 532);
 
+    // Montant TOTAL aligné à droite
     ctx.font = 'bold 32px monospace';
-    ctx.fillText(`${data.final_price.toLocaleString()} FCFA`, 280, 535);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${data.final_price.toLocaleString('fr-FR')} FCFA`, width - 80, 532);
 
+    // Réinitialiser l'alignement pour le reste du texte
+    ctx.textAlign = 'left';
+    
     // 6. Pied de page
     ctx.fillStyle = encreDouce;
     ctx.font = '14px sans-serif';
