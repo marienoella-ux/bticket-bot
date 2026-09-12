@@ -79,9 +79,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         `*COMMANDES DISPONIBLES :*\n` +
         `• *ATTENTE* : Voir les comptes non approuvés.\n` +
         `• *VALIDER <numéro> <quota>* : Approuver un compte.\n` +
-        `  _(Ex : VALIDER 237690000000 100)_\n` +
-        `• *RECHARGE <numéro> <quota>* : Ajouter des reçus.\n` +
-        `  _(Ex : RECHARGE 237690000000 50)_`;
+        `• *RECHARGE <numéro> <quota>* : Ajouter des reçus.`;
 
       return await envoyerTexte(phone, adminMsg, phoneId);
     }
@@ -115,19 +113,18 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
             .single();
 
           if (error || !targetUser) {
-            return await envoyerTexte(phone, `❌ Erreur : Numéro \`${targetPhone}\` introuvable dans la base.`, phoneId);
+            return await envoyerTexte(phone, `❌ Erreur : Numéro \`${targetPhone}\` introuvable.`, phoneId);
           }
 
-          // Confirmation à l'admin
-          await envoyerTexte(phone, `✅ *Compte activé !*\n\nBoutique : *${targetUser.shop_name}*\nNuméro : ${targetPhone}\nQuota attribué : *${quota} reçus*.`, phoneId);
+          await envoyerTexte(phone, `✅ *Compte activé !*\n\nBoutique : *${targetUser.shop_name}*\nQuota : *${quota} reçus*.`, phoneId);
 
-          // Notification au commerçant
           return await envoyerTexte(
             targetPhone,
             `🎉 *Votre compte B-Ticket est activé !*\n\n` +
             `Votre boutique *${targetUser.shop_name}* dispose de *${quota} reçus*.\n\n` +
-            `• Envoyez vos articles au format : _Nom, Prix_\n` +
-            `• Envoyez *VENTE* pour émettre votre premier reçu !`,
+            `⚡ *MODE EXPRESS :* Envoyez \`Nom Produit, Quantité, Prix Total, Nom Client\` pour générer un reçu en 1 clic !\n` +
+            `_Exemple : Sac Wax, 2, 15000, Paul_\n\n` +
+            `Ou envoyez *VENTE* pour utiliser le menu guidé.`,
             phoneId
           );
         }
@@ -152,9 +149,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
           return await envoyerTexte(
             targetPhone,
-            `💳 *Recharge effectuée !*\n\n` +
-            `*${addQuota} reçus* ont été ajoutés à votre compte.\n` +
-            `Votre nouveau solde est de *${newQuota} reçus*.`,
+            `💳 *Recharge effectuée !*\n\n*${addQuota} reçus* ajoutés.\nNouveau solde : *${newQuota} reçus*.`,
             phoneId
           );
         }
@@ -169,7 +164,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
   let { data: conv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
 
-  // 1. ONBOARDING
   if (!user) {
     if (!conv) {
       await supabase.from('conversations').insert([{ phone_number: phone, step: 'ONBOARDING_FIRST_NAME' }]);
@@ -183,7 +177,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       await supabase.from('users').insert([{ phone_number: phone, first_name: conv.data.first_name, shop_name: text, receipt_quota: 0, is_approved: false }]);
       await supabase.from('conversations').delete().eq('phone_number', phone);
 
-      // Notification automatique à l'admin
       await envoyerTexte(
         ADMIN_PHONE,
         `🔔 *NOUVELLE INSCRIPTION !*\n\nNom : ${conv.data.first_name}\nBoutique : ${text}\nTel : \`${phone}\`\n\nPour valider : \`VALIDER ${phone} 100\``,
@@ -194,14 +187,37 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     }
   }
 
-  // 2. EN ATTENTE DE VALIDATION
   if (user && !user.is_approved) {
     return await envoyerTexte(phone, `Bonjour ${user.first_name} ! ⏳ Votre compte *${user.shop_name}* est en attente de validation.`, phoneId);
   }
 
-  // 3. UTILISATEUR ACTIF
   if (user && user.is_approved) {
     const textLower = text.toLowerCase();
+
+    // ----------------------------------------------------
+    // NOUVEAU : MODE EXPRESS (Détection directe sur 1 message)
+    // Format : Nom Produit, Quantité, Prix Total, Nom Client (optionnel)
+    // Exemple : Sac Crocodile, 2, 15000, M. Paul
+    // ----------------------------------------------------
+    if (text.includes(',') && !conv) {
+      const parts = text.split(',').map(p => p.trim());
+      if (parts.length >= 3) {
+        const prodName = parts[0];
+        const qty = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
+        const totalPrice = parseInt(parts[2].replace(/[^0-9]/g, ''), 10);
+        const clientName = parts[3] || 'Client Comptoir';
+
+        if (prodName && !isNaN(qty) && !isNaN(totalPrice) && qty > 0 && totalPrice > 0) {
+          if (user.receipt_quota <= 0) {
+            return await envoyerTexte(phone, "⚠️ Votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.", phoneId);
+          }
+
+          const items = [{ name: prodName, qty: qty, total_price: totalPrice }];
+          await envoyerTexte(phone, "⚡ Mode Express détecté ! Génération du reçu en cours...", phoneId);
+          return await genererEtEnvoyerRecu(phone, user, items, clientName, phoneId);
+        }
+      }
+    }
 
     if (interactiveId === 'btn_add_more') {
       return await ouvrirCatalogueVendeur(phone, user, phoneId);
@@ -209,7 +225,15 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
     if (interactiveId === 'btn_finish_cart') {
       await supabase.from('conversations').update({ step: 'SALE_CLIENT_NAME' }).eq('phone_number', phone);
-      return await envoyerTexte(phone, "Quel est le *Nom du client* ?", phoneId);
+      return await envoyerDemandeClient(phone, phoneId);
+    }
+
+    if (interactiveId === 'btn_client_default') {
+      if (conv && conv.data) {
+        const items = conv.data.items || [];
+        await afficherRecuEbauche(phone, user, items, 'Client Comptoir', phoneId);
+      }
+      return;
     }
 
     if (interactiveId === 'btn_cancel_sale') {
@@ -241,33 +265,42 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         const currentItems = conv?.data?.items || [];
         await supabase.from('conversations').upsert({
           phone_number: phone,
-          step: 'SALE_QTY',
+          step: 'SALE_DETAILS',
           data: { items: currentItems, current_product: { name: product.name, unit_price: product.price } }
         });
-        return await envoyerTexte(phone, `📦 Article : *${product.name}*\nPrix catalogue : ${product.price.toLocaleString('fr-FR')} FCFA\n\nEntrez la *quantité vendue* (ex: 1, 2) :`, phoneId);
+        return await envoyerTexte(
+          phone, 
+          `📦 Article : *${product.name}*\n\n` +
+          `Entrez la *quantité* et le *prix total convenu* (séparés par une virgule).\n` +
+          `_Exemple :_ \`1, 5000\` ou simplement \`2, 10000\``, 
+          phoneId
+        );
       }
     }
 
-    if (conv && conv.step === 'SALE_QTY') {
-      const qty = parseInt(text.replace(/[^0-9]/g, ''), 10);
-      if (isNaN(qty) || qty <= 0) return await envoyerTexte(phone, "⚠️ Entrez une quantité valide.", phoneId);
+    // ÉTAPE SIMPLIFIÉE : Quantité et Prix en un seul message (ex: 2, 15000)
+    if (conv && conv.step === 'SALE_DETAILS') {
+      let qty = 1;
+      let finalPrice = 0;
 
-      await supabase.from('conversations').update({
-        step: 'SALE_PRICE',
-        data: { ...conv.data, current_qty: qty }
-      }).eq('phone_number', phone);
+      if (text.includes(',')) {
+        const parts = text.split(',');
+        qty = parseInt(parts[0].replace(/[^0-9]/g, ''), 10) || 1;
+        finalPrice = parseInt(parts[1].replace(/[^0-9]/g, ''), 10) || 0;
+      } else {
+        // S'il n'écrit qu'un seul chiffre, on considère la quantité = ce chiffre et le prix = prix unitaire x quantité
+        qty = parseInt(text.replace(/[^0-9]/g, ''), 10) || 1;
+        finalPrice = (conv.data.current_product.unit_price || 0) * qty;
+      }
 
-      return await envoyerTexte(phone, `Quantité : *${qty}*\n\nEntrez le *prix final total convenu* pour cet article (en FCFA) :`, phoneId);
-    }
-
-    if (conv && conv.step === 'SALE_PRICE') {
-      const finalPrice = parseInt(text.replace(/[^0-9]/g, ''), 10);
-      if (isNaN(finalPrice) || finalPrice <= 0) return await envoyerTexte(phone, "⚠️ Entrez un montant valide en FCFA.", phoneId);
+      if (isNaN(finalPrice) || finalPrice <= 0) {
+        return await envoyerTexte(phone, "⚠️ Veuillez entrer un montant valide. Exemple : `2, 10000`", phoneId);
+      }
 
       const items = conv.data.items || [];
       items.push({
         name: conv.data.current_product.name,
-        qty: conv.data.current_qty,
+        qty: qty,
         total_price: finalPrice
       });
 
@@ -280,42 +313,78 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     }
 
     if (conv && conv.step === 'SALE_CLIENT_NAME') {
-      const clientName = text;
+      const clientName = text.trim() || 'Client Comptoir';
       const items = conv.data.items || [];
-
-      let totalVente = 0;
-      let recapText = `🧾 *ÉBAUCHE DU REÇU B-TICKET*\n`;
-      recapText += `-----------------------------------\n`;
-      recapText += `🏪 *Boutique :* ${user.shop_name}\n`;
-      recapText += `👤 *Client :* ${clientName}\n\n`;
-      recapText += `*ARTICLES :*\n`;
-
-      items.forEach((item, index) => {
-        totalVente += item.total_price;
-        recapText += `${index + 1}. *${item.name}* (x${item.qty}) - ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
-      });
-
-      recapText += `-----------------------------------\n`;
-      recapText += `💰 *TOTAL FINAL : ${totalVente.toLocaleString('fr-FR')} FCFA*\n\n`;
-      recapText += `Veuillez vérifier les informations ci-dessus avant de générer l'image du reçu.`;
-
-      await supabase.from('conversations').update({
-        step: 'VALIDE_EBAUCHE',
-        data: { items: items, client_name: clientName }
-      }).eq('phone_number', phone);
-
-      await envoyerTexte(phone, recapText, phoneId);
-      return await envoyerBoutonsValidation(phone, phoneId);
+      await afficherRecuEbauche(phone, user, items, clientName, phoneId);
+      return;
     }
 
     if (textLower === 'vente' || textLower === 'menu' || textLower === '1') {
       await supabase.from('conversations').delete().eq('phone_number', phone);
       await ouvrirCatalogueVendeur(phone, user, phoneId);
-    } else if (text.includes(',')) {
-      await enregistrerArticlesCatalogue(phone, text, phoneId);
     } else {
-      await envoyerTexte(phone, `Bonjour *${user.first_name}* (${user.shop_name}) !\nSolde : *${user.receipt_quota} reçus*\n\nEnvoyez *VENTE* pour émettre un reçu.`, phoneId);
+      await envoyerTexte(
+        phone, 
+        `Bonjour *${user.first_name}* (${user.shop_name}) !\n` +
+        `Solde : *${user.receipt_quota} reçus*\n\n` +
+        `⚡ *MODE EXPRESS :* Envoyez directement :\n` +
+        `\`Article, Quantité, Prix Total, Nom Client\`\n` +
+        `_Ex : Sac, 1, 15000, Marie_\n\n` +
+        `Ou envoyez *VENTE* pour le catalogue guidé.`, 
+        phoneId
+      );
     }
+  }
+}
+
+async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
+  let totalVente = 0;
+  let recapText = `🧾 *ÉBAUCHE DU REÇU B-TICKET*\n`;
+  recapText += `-----------------------------------\n`;
+  recapText += `🏪 *Boutique :* ${user.shop_name}\n`;
+  recapText += `👤 *Client :* ${clientName}\n\n`;
+  recapText += `*ARTICLES :*\n`;
+
+  items.forEach((item, index) => {
+    totalVente += item.total_price;
+    recapText += `${index + 1}. *${item.name}* (x${item.qty}) - ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
+  });
+
+  recapText += `-----------------------------------\n`;
+  recapText += `💰 *TOTAL FINAL : ${totalVente.toLocaleString('fr-FR')} FCFA*\n\n`;
+  recapText += `Veuillez vérifier les informations ci-dessus.`;
+
+  await supabase.from('conversations').update({
+    step: 'VALIDE_EBAUCHE',
+    data: { items: items, client_name: clientName }
+  }).eq('phone_number', phone);
+
+  await envoyerTexte(phone, recapText, phoneId);
+  await envoyerBoutonsValidation(phone, phoneId);
+}
+
+async function envoyerDemandeClient(phone, phoneId) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: "Quel est le *Nom du client* ? (Vous pouvez écrire son nom ou cliquer ci-dessous)" },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'btn_client_default', title: '👤 Client Comptoir' } }
+            ]
+          }
+        }
+      },
+      { headers: { Authorization: `Bearer ${META_TOKEN}` } }
+    );
+  } catch (error) {
+    await envoyerTexte(phone, "Quel est le *Nom du client* ? (Répondez avec son nom ou envoyez '0' pour anonyme)", phoneId);
   }
 }
 
@@ -467,7 +536,6 @@ async function envoyerBoutonsCart(to, items, phoneId) {
   items.forEach((item) => {
     text += `• ${item.name} (x${item.qty}) : ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
   });
-  text += `\nQue souhaitez-vous faire ?`;
 
   try {
     await axios.post(
@@ -481,8 +549,8 @@ async function envoyerBoutonsCart(to, items, phoneId) {
           body: { text: text },
           action: {
             buttons: [
-              { type: 'reply', reply: { id: 'btn_add_more', title: '➕ Ajouter article' } },
-              { type: 'reply', reply: { id: 'btn_finish_cart', title: '✅ Terminer & Valider' } }
+              { type: 'reply', reply: { id: 'btn_add_more', title: '➕ Autre article' } },
+              { type: 'reply', reply: { id: 'btn_finish_cart', title: '✅ Valider reçu' } }
             ]
           }
         }
@@ -508,7 +576,7 @@ async function envoyerBoutonsValidation(to, phoneId) {
           action: {
             buttons: [
               { type: 'reply', reply: { id: 'btn_validate_recu', title: '🚀 Générer Reçu' } },
-              { type: 'reply', reply: { id: 'btn_cancel_sale', title: '✏️ Annuler / Modifier' } }
+              { type: 'reply', reply: { id: 'btn_cancel_sale', title: '✏️ Annuler' } }
             ]
           }
         }
@@ -517,23 +585,6 @@ async function envoyerBoutonsValidation(to, phoneId) {
     );
   } catch (error) {
     console.error("[ERREUR BOUTONS VALIDATION]:", error.response?.data || error.message);
-  }
-}
-
-async function enregistrerArticlesCatalogue(phone, rawText, phoneId) {
-  const lines = rawText.split('\n');
-  const productsToInsert = [];
-  for (const line of lines) {
-    const parts = line.split(',');
-    if (parts.length >= 2) {
-      const name = parts[0].trim();
-      const price = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
-      if (name && !isNaN(price) && price > 0) productsToInsert.push({ user_phone: phone, name, price });
-    }
-  }
-  if (productsToInsert.length > 0) {
-    await supabase.from('products').insert(productsToInsert);
-    await envoyerTexte(phone, `✅ *${productsToInsert.length} article(s) ajouté(s) !*`, phoneId);
   }
 }
 
