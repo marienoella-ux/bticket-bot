@@ -9,8 +9,8 @@ app.use(express.json());
 
 // --- VARIABLES D'ENVIRONNEMENT ---
 const PORT = process.env.PORT || 3000;
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const META_ACCESS_TOKEN = process.env.WHATSAPP_TOKEN;
+const WEBHOOK_VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const ADMIN_PHONE = process.env.ADMIN_PHONE ? process.env.ADMIN_PHONE.replace(/[^0-9]/g, '') : '';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
@@ -36,7 +36,7 @@ async function envoyerTexte(to, text, phoneId) {
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         }
       }
@@ -78,7 +78,7 @@ async function envoyerBoutonsCart(phone, items, phoneId) {
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         }
       }
@@ -129,7 +129,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         }
       }
@@ -161,7 +161,7 @@ async function envoyerDemandeClient(phone, phoneId) {
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         }
       }
@@ -215,7 +215,7 @@ async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         }
       }
@@ -239,7 +239,7 @@ async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
       {
         headers: {
           ...form.getHeaders(),
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`
         }
       }
     );
@@ -387,7 +387,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
         },
         {
           headers: {
-            Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+            Authorization: `Bearer ${META_ACCESS_TOKEN}`,
             'Content-Type': 'application/json'
           }
         }
