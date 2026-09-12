@@ -14,7 +14,9 @@
     "@napi-rs/canvas": "^0.1.52",
     "@supabase/supabase-js": "^2.45.0",
     "axios": "^1.7.0",
-    "express": "^4.19.0",
-    "form-data": "^4.0.0"
+    "express": "^4.19.2",
+    "form-data": "^4.0.0",
+    "canvas": "^2.11.2",
+    "dotenv": "^16.4.5"
   }
 }
