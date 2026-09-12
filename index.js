@@ -541,8 +541,10 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
   if (user && user.is_approved) {
     const textLower = text.toLowerCase();
-
-    // MODE EXPRESS MULTI-ARTICLES (PARSING PAR VIRGULE & SAUTS DE LIGNE)
+    
+        // ----------------------------------------------------
+    // MODE EXPRESS MULTI-ARTICLES + AUTO-ENREGISTREMENT CATALOGUE
+    // ----------------------------------------------------
     if (text && text.includes(',') && !conv) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const items = [];
@@ -562,6 +564,23 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
           if (prodName && !isNaN(qty) && !isNaN(totalPrice) && qty > 0 && totalPrice > 0) {
             items.push({ name: prodName, qty: qty, total_price: totalPrice });
+
+            // AUTO-ENREGISTREMENT DE L'ARTICLE À LA VOLÉE DANS SUPABASE (SANS BLOQUER)
+            const unitPrice = Math.round(totalPrice / qty);
+            supabase
+              .from('products')
+              .select('id')
+              .eq('name', prodName)
+              .single()
+              .then(({ data }) => {
+                if (!data) {
+                  // Le produit n'existe pas, on l'ajoute au catalogue
+                  supabase.from('products').insert([
+                    { name: prodName, price: unitPrice, user_id: user.id }
+                  ]).then();
+                }
+              })
+              .catch(() => {});
           }
         }
       }
