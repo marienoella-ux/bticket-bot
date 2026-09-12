@@ -226,27 +226,177 @@ async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
 }
 
 // 6. Uploader l'image vers l'API WhatsApp Media
-async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
+// GENERATION IMAGE REÇU (CHARTE B-TICKET)
+async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
-    const form = new FormData();
-    form.append('file', imageBuffer, { filename: 'recu.png', contentType: mimeType });
-    form.append('type', 'image');
-    form.append('messaging_product', 'whatsapp');
+    const baseHeight = 650;
+    const itemHeight = 40;
+    const height = baseHeight + (items.length * itemHeight);
+    const width = 600;
 
-    const res = await axios.post(
-      `https://graph.facebook.com/v18.0/${phoneId}/media`,
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    const papierTicket = '#FBF6EC';
+    const encreMarche = '#015E54';
+    const ambreVif = '#F2A63A';
+    const encreDouce = '#4B6660';
+
+    ctx.fillStyle = papierTicket;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = encreMarche;
+    ctx.fillRect(40, 40, width - 80, 100);
+
+    ctx.fillStyle = papierTicket;
+    ctx.beginPath();
+    ctx.arc(40, 90, 15, 0, Math.PI * 2);
+    ctx.arc(width - 40, 90, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = papierTicket;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(115, 50);
+    ctx.lineTo(115, 130);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = papierTicket;
+    ctx.font = 'bold 38px sans-serif';
+    ctx.fillText('B', 70, 102);
+    ctx.fillText('Ticket', 130, 102);
+
+    const receiptNum = `#${Math.floor(1000 + Math.random() * 9000)}`;
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText(user.shop_name.toUpperCase(), 50, 190);
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = '18px monospace';
+    ctx.fillText(`N° ${receiptNum}  |  Date: ${dateStr}`, 50, 220);
+
+    ctx.strokeStyle = encreDouce;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(50, 250);
+    ctx.lineTo(width - 50, 250);
+    ctx.stroke();
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = '16px sans-serif';
+    ctx.fillText('CLIENT:', 50, 290);
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(clientName, 130, 290);
+
+    let currentY = 350;
+    ctx.fillStyle = encreDouce;
+    ctx.font = '16px sans-serif';
+    ctx.fillText('ARTICLE', 50, currentY);
+    ctx.fillText('QTY', 380, currentY);
+    ctx.fillText('P.U', 480, currentY);
+
+    let totalGlobal = 0;
+    currentY += 35;
+
+    items.forEach(item => {
+      const unitPrice = Math.round(item.total_price / item.qty);
+      totalGlobal += item.total_price;
+
+      ctx.fillStyle = encreMarche;
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(item.name.substring(0, 22), 50, currentY);
+
+      ctx.font = '18px monospace';
+      ctx.fillText(`${item.qty}`, 380, currentY);
+      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 480, currentY);
+
+      currentY += itemHeight;
+    });
+
+    currentY += 20;
+    ctx.fillStyle = ambreVif;
+    ctx.fillRect(50, currentY, width - 100, 90);
+
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('TOTAL PAYÉ', 80, currentY + 52);
+
+    ctx.font = 'bold 32px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${totalGlobal.toLocaleString('fr-FR')} FCFA`, width - 80, currentY + 52);
+
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = '14px sans-serif';
+    ctx.fillText('Merci pour votre confiance !', 200, currentY + 140);
+    ctx.font = '12px sans-serif';
+    ctx.fillText('Fait avec B-Ticket • Un produit Brainiacs', 180, currentY + 180);
+
+    const imageBuffer = canvas.toBuffer('image/png');
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('file', imageBuffer, { filename: 'recu.png', contentType: 'image/png' });
+
+    const mediaRes = await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/media`,
       form,
-      {
-        headers: {
-          ...form.getHeaders(),
-          Authorization: `Bearer ${META_ACCESS_TOKEN}`
-        }
-      }
+      { headers: { ...form.getHeaders(), Authorization: `Bearer ${META_ACCESS_TOKEN}` } }
     );
-    return res;
-  } catch (err) {
-    console.error("Erreur uploaderMediaWhatsApp:", err.response ? err.response.data : err.message);
-    return null;
+
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'image',
+        image: { id: mediaRes.data.id, caption: `Voici le reçu pour *${clientName}* ! Prêt à être transféré. 🧾` }
+      },
+      { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` } }
+    );
+
+    await supabase.from('users').update({ receipt_quota: user.receipt_quota - 1 }).eq('phone_number', phone);
+
+  } catch (error) {
+    console.error("[ERREUR GENERATION RECU]:", error.response?.data || error.message);
+    await envoyerTexte(phone, "❌ Erreur lors de la création de l'image du reçu.", phoneId);
+  }
+}
+
+async function envoyerBoutonsCart(to, items, phoneId) {
+  let text = `🛒 *Panier actuel (${items.length} article(s)) :*\n`;
+  items.forEach((item) => {
+    text += `• ${item.name} (x${item.qty}) : ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
+  });
+
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: text },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'btn_add_more', title: '➕ Autre article' } },
+              { type: 'reply', reply: { id: 'btn_finish_cart', title: '✅ Valider reçu' } }
+            ]
+          }
+        }
+      },
+      { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` } }
+    );
+  } catch (error) {
+    console.error("[ERREUR BOUTONS CART]:", error.response?.data || error.message);
   }
 }
 
