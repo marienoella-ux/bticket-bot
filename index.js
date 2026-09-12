@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const FormData = require('form-data');
-const { createCanvas } = require('canvas');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
