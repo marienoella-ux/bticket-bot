@@ -171,7 +171,7 @@ async function envoyerBoutonsCart(phone, items, phoneId) {
 
 // 3. Ouvrir le catalogue interactif du vendeur
 async function ouvrirCatalogueVendeur(phone, user, phoneId) {
-  const { data: products } = await supabase.from('products').select('*').limit(10);
+  const { data: products } = await supabase.from('products').select('*').eq('user_phone', phone).limit(10);
 
   if (!products || products.length === 0) {
     const noProdMsg = t(user, 'welcome') + "\nAucun produit configuré dans votre catalogue.\n\n" +
@@ -335,7 +335,7 @@ async function autoSaveProducts(userId, items) {
     const { data: existing } = await supabase
       .from('products')
       .select('id')
-      .eq('user_id', userId)
+      .eq('user_phone', userId)
       .ilike('name', item.name.trim())
       .maybeSingle();
 
@@ -343,7 +343,7 @@ async function autoSaveProducts(userId, items) {
       await supabase
         .from('products')
         .insert({
-          user_id: userId,
+          user_phone: userId,
           name: item.name.trim(),
           price: unitPrice
         });
@@ -360,7 +360,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       .from('sales')
       .insert([
         {
-          user_id: user.id,
+          user_id: user.phone_number,
           client_name: clientName,
           total_amount: totalAmount,
           items: items
@@ -711,7 +711,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       if (user.receipt_quota <= 0) {
         return await envoyerTexte(phone, t(user, 'quota_warning'), phoneId);
       }
-      await autoSaveProducts(user.id, items);
+      await autoSaveProducts(user.phone_number, items);
       return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
     }
   }
