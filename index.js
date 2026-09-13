@@ -421,7 +421,20 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const imageBuffer = canvas.toBuffer('image/png');
 
     // 3. Upload & Envoi
-    const newQuota = Math.max(0, user.receipt_quota - 1);
+    const newQuota = user.receipt_quota - 1;
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ receipt_quota: newQuota })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error("Erreur lors de la mise à jour du quota :", updateError);
+    } else {
+    // Met à jour l'objet local pour le reste de la session
+      user.receipt_quota = newQuota;
+    }
+    
     await supabase.from('users').update({ receipt_quota: newQuota }).eq('id', user.id);
 
     const mediaRes = await uploaderMediaWhatsApp(imageBuffer, 'image/png', phoneId);
@@ -597,6 +610,16 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     }
   }
 
+// --------------------------------------
+// COMMANDE POUR CHANGER DE LANGUE
+// ---------------------------------------
+  if (text.toLowerCase() === '/lang' || text.toLowerCase() === 'langue') {
+  const newLang = user.language === 'en' ? 'fr' : 'en';
+  await supabase.from('users').update({ language: newLang }).eq('id', user.id);
+  user.language = newLang;
+  return reply(t(user, 'lang_changed'));
+  }
+  
   // ------------------------------------------
   // GESTION DU MODE EXPRESS MULTI-ARTICLES (SÉPARATEUR VIRGULE)
   // ------------------------------------------
@@ -625,18 +648,29 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
           items.push({ name: prodName, qty: qty, total_price: totalPrice });
 
           // Auto-enregistrement produit au catalogue s'il n'existe pas
-          const unitPrice = Math.round(totalPrice / qty);
-          supabase
-            .from('products')
-            .select('id')
-            .eq('name', prodName)
-            .single()
-            .then(({ data }) => {
-              if (!data) {
-                supabase.from('products').insert([{ name: prodName, price: unitPrice, user_id: user.id }]).then();
-              }
-            })
-            .catch(() => {});
+          // Fonction pour enregistrer automatiquement les nouveaux articles
+          async function autoSaveProducts(userId, items) {
+            for (const item of items) {
+              // 1. Vérifier si l'article existe déjà pour cet utilisateur
+              const { data: existing } = await supabase
+                .from('products')
+                .select('id')
+                .eq('user_id', userId)
+                .ilike('name', item.name.trim())
+                .maybeSingle();
+
+            // 2. S'il n'existe pas, on l'ajoute au catalogue
+            if (!existing) {
+              await supabase
+                .from('products')
+                .insert({
+                  user_id: userId,
+                  name: item.name.trim(),
+                  price: item.price
+                });
+            }
+          }
+        }
         }
       }
     }
@@ -669,6 +703,31 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     "`Bouteille Huile, 1, 1500`",
     phoneId
   );
+}
+
+// --------------------------------------------
+// FICHIERS DE TRADUCTIONS
+// --------------------------
+const translations = {
+  fr: {
+    welcome: "Bienvenue sur B-Ticket !",
+    quota_left: (q) => `Il vous reste ${q} reçus.`,
+    express_prompt: "Envoyez vos articles (ex: Sac 1 5000)...",
+    lang_changed: "Langue modifiée en Français"
+  },
+  en: {
+    welcome: "Welcome to B-Ticket!",
+    quota_left: (q) => `You have ${q} receipts left.`,
+    express_prompt: "Send your items (e.g., Bag 1 5000)...",
+    lang_changed: "Language changed to English"
+  }
+};
+
+// Petite fonction utilitaire
+function t(user, key, ...args) {
+  const lang = user?.language || 'fr';
+  const val = translations[lang][key];
+  return typeof val === 'function' ? val(...args) : val;
 }
 
 // ==========================================
