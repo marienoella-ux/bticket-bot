@@ -84,6 +84,43 @@ async function envoyerTexte(to, text, phoneId) {
     console.error("Erreur envoyerTexte:", err.response ? err.response.data : err.message);
   }
 }
+// Translations 
+const boutons = [
+  {title: t(user, 'btn_catalog'), id: 'BTN_CATALOG'},
+  {title: t(user, 'btn_sales'), id: 'BTN_SALES'},
+  {title: t(user, 'btn_help'), id 'BTN_HELP'}
+const translations = {
+  fr: {
+    lang_changed: "Langue changée en Français",
+    welcome: "Bienvenue {name} ! 👋 Choisissez une optionci-dessous ou envoyez un message au format Express (ex: Produit, 2, 5000).",
+    express_prompt: "💡 *Mode Express* : Envoyez directement vos articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
+    quota_warning: "⚠️ {name}, votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte."
+    btn_catalog: "Mon catalogue",
+    btn_sales: "Mes ventes",
+    btn_help: "Aide"
+  },
+  en: {
+    lang_changed: "Language changed to English",
+    welcome: "Welcome {name}! 👋 Choose an option below or send a message in Express format (e.g., Product, 2, 5000).",
+    express_prompt: "💡 *Express Mode*: Send your items directly using the format:\n`Product name, Quantity, Total price`\n\nExample:\n*Bag of rice, 2, 30000*",
+    quota_warning: "⚠️ {name}, your receipt quota is exhausted (0 remaining). Please top up your account."
+    btn_catalog: "My catalog",
+    btn_sales: "My sales",
+    btn_help: "Help"
+  }
+};
+
+// Helper de traduction amélioré avec gestion du prénom
+function t(user, key) {
+  const lang = (user && user.language) ? user.language : 'fr';
+  let text = translations[lang]?.[key] || translations['fr']?.[key] || key;
+  
+  // Extraire le prénom
+  const firstName = users.first_name || users.full_name?.split(' ')[0] || '';
+  
+  // Remplacer {name} par le prénom ou nettoyer l'espace
+  return text.replace('{name}', firstName).replace(/\s+/g, ' ');
+}
 
 // 2. Envoyer les boutons de validation du panier
 async function envoyerBoutonsCart(phone, items, phoneId) {
@@ -134,7 +171,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
   if (!products || products.length === 0) {
     return await envoyerTexte(
       phone,
-      "📦 Aucun produit configuré dans le catalogue global.\n\n" +
+      "{name} Aucun produit configuré dans votre catalogue.\n\n" +
       "⚡ Vous pouvez directement utiliser le *Mode Express* en envoyant :\n" +
       "`Nom Produit, Quantité, Prix Total`",
       phoneId
@@ -289,7 +326,30 @@ async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
   }
 }
 
-// 7. GENERATION ET ENVOI DE L'IMAGE REÇU (CHARTE GRAPHIQUE B-TICKET)
+//7. Sauvegarde automatique des produits 
+async function autoSaveProducts(userId, items) {
+  for (const item of items) {
+    const unitPrice = Math.round(item.total_price / item.qty);
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('user_id', userId)
+      .ilike('name', item.name.trim())
+      .maybeSingle();
+
+    if (!existing) {
+      await supabase
+        .from('products')
+        .insert({
+          user_id: userId,
+          name: item.name.trim(),
+          price: unitPrice
+        });
+    }
+  }
+}
+
+// 8. GENERATION ET ENVOI DE L'IMAGE REÇU (CHARTE GRAPHIQUE B-TICKET)
 async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
     const totalAmount = items.reduce((sum, item) => sum + item.total_price, 0);
@@ -435,8 +495,6 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       user.receipt_quota = newQuota;
     }
     
-    await supabase.from('users').update({ receipt_quota: newQuota }).eq('id', user.id);
-
     const mediaRes = await uploaderMediaWhatsApp(imageBuffer, 'image/png', phoneId);
 
     if (mediaRes && mediaRes.data && mediaRes.data.id) {
@@ -514,7 +572,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         const quota = parseInt(parts[2], 10);
         if (!isNaN(quota)) {
           await supabase.from('users').update({ is_approved: true, receipt_quota: quota }).eq('phone_number', targetPhone);
-          await envoyerTexte(targetPhone, `🎉 Félicitations ! Votre compte B-Ticket a été approuvé avec un quota de ${quota} reçus.`, phoneId);
+          await envoyerTexte(targetPhone, `🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de ${quota} reçus.`, phoneId);
           return await envoyerTexte(phone, `✅ Compte ${targetPhone} approuvé avec ${quota} reçus.`, phoneId);
         }
       }
@@ -530,7 +588,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
           if (u) {
             const newQ = (u.receipt_quota || 0) + addQuota;
             await supabase.from('users').update({ receipt_quota: newQ }).eq('phone_number', targetPhone);
-            await envoyerTexte(targetPhone, `🎁 Votre compte a été rechargé de ${addQuota} reçus ! Nouveau solde : ${newQ} reçus.`, phoneId);
+            await envoyerTexte(targetPhone, `{name}🎁 Votre compte a été rechargé de ${addQuota} reçus ! Nouveau solde : ${newQ} reçus.`, phoneId);
             return await envoyerTexte(phone, `✅ Recharge effectuée pour ${targetPhone}. Nouveau total : ${newQ}`, phoneId);
           }
         }
@@ -545,7 +603,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
   if (!user) {
     await supabase.from('users').insert([{ phone_number: phone, shop_name: 'Ma Boutique', is_approved: false, receipt_quota: 5 }]);
-    return await envoyerTexte(phone, "👋 Bienvenue sur B-Ticket Express !\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.", phoneId);
+    return await envoyerTexte(phone, "👋 Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.", phoneId);
   }
 
   if (!user.is_approved) {
@@ -613,11 +671,11 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 // --------------------------------------
 // COMMANDE POUR CHANGER DE LANGUE
 // ---------------------------------------
-  if (text.toLowerCase() === '/lang' || text.toLowerCase() === 'langue') {
+  if (text && (text.toLowerCase() === '/lang' || text.toLowerCase() === 'langue')) {
   const newLang = user.language === 'en' ? 'fr' : 'en';
   await supabase.from('users').update({ language: newLang }).eq('id', user.id);
   user.language = newLang;
-  return reply(t(user, 'lang_changed'));
+  return envoyerTexte(phone, t(user, 'lang_changed'), phoneId);
   }
   
   // ------------------------------------------
@@ -646,31 +704,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
         if (prodName && !isNaN(qty) && !isNaN(totalPrice) && qty > 0 && totalPrice > 0) {
           items.push({ name: prodName, qty: qty, total_price: totalPrice });
-
-          // Auto-enregistrement produit au catalogue s'il n'existe pas
-          // Fonction pour enregistrer automatiquement les nouveaux articles
-          async function autoSaveProducts(userId, items) {
-            for (const item of items) {
-              // 1. Vérifier si l'article existe déjà pour cet utilisateur
-              const { data: existing } = await supabase
-                .from('products')
-                .select('id')
-                .eq('user_id', userId)
-                .ilike('name', item.name.trim())
-                .maybeSingle();
-
-            // 2. S'il n'existe pas, on l'ajoute au catalogue
-            if (!existing) {
-              await supabase
-                .from('products')
-                .insert({
-                  user_id: userId,
-                  name: item.name.trim(),
-                  price: item.price
-                });
-            }
-          }
-        }
         }
       }
     }
@@ -679,6 +712,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       if (user.receipt_quota <= 0) {
         return await envoyerTexte(phone, "⚠️ Votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.", phoneId);
       }
+      await autoSaveProducts(user.id, items);
       return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
     }
   }
