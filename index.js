@@ -18,7 +18,7 @@ app.use(express.json({
 const PORT = process.env.PORT || 3000;
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const WEBHOOK_VERIFY_TOKEN = process.env.WEBHOOK_VERIFY_TOKEN;
-const APP_SECRET = process.env.APP_SECRET; // À ajouter sur Render pour la sécurité des webhooks
+const APP_SECRET = process.env.APP_SECRET;
 const ADMIN_PHONE = process.env.ADMIN_PHONE ? process.env.ADMIN_PHONE.replace(/[^0-9]/g, '') : '';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
@@ -27,11 +27,53 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
+// SYSTEME DE TRADUCTIONS ET HELPERS MULTI-LANGUES
+// ==========================================
+
+const translations = {
+  fr: {
+    lang_changed: "Langue changée en Français 🇫🇷",
+    welcome: "Bienvenue {name} ! 👋 Choisissez une option ci-dessous ou envoyez un message au format Express (ex: Produit, 2, 5000).",
+    express_prompt: "💡 *Mode Express* : Envoyez directement vos articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
+    quota_warning: "⚠️ {name}, votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.",
+    btn_catalog: "📦 Mon catalogue",
+    btn_sales: "📊 Mes ventes",
+    btn_help: "❓ Aide",
+    welcome_new: "👋 Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
+    congrats_approved: "🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de {quota} reçus.",
+    recharge_success: "{name} 🎁 Votre compte a été rechargé de {quota} reçus ! Nouveau solde : {total} reçus."
+  },
+  en: {
+    lang_changed: "Language changed to English 🇬🇧",
+    welcome: "Welcome {name}! 👋 Choose an option below or send a message in Express format (e.g., Product, 2, 5000).",
+    express_prompt: "💡 *Express Mode*: Send your items directly using the format:\n`Product name, Quantity, Total price`\n\nExample:\n*Bag of rice, 2, 30000*",
+    quota_warning: "⚠️ {name}, your receipt quota is exhausted (0 remaining). Please top up your account.",
+    btn_catalog: "📦 My catalog",
+    btn_sales: "📊 My sales",
+    btn_help: "❓ Help",
+    welcome_new: "👋 Welcome to B-Ticket Express {name}!\n\nYour account is being activated by our team. You will receive a notification shortly.",
+    congrats_approved: "🎉 Congratulations {name}! Your B-Ticket account has been approved with a quota of {quota} receipts.",
+    recharge_success: "{name} 🎁 Your account has been topped up with {quota} receipts! New balance: {total} receipts."
+  }
+};
+
+// Helper de traduction amélioré avec gestion du prénom
+function t(user, key) {
+  const lang = (user && user.language) ? user.language : 'fr';
+  let text = translations[lang]?.[key] || translations['fr']?.[key] || key;
+  
+  // Extraire le prénom correctement
+  const firstName = user?.first_name || user?.full_name?.split(' ')[0] || user?.shop_name || '';
+  
+  // Remplacer {name} par le prénom
+  return text.replace('{name}', firstName).replace(/\s+/g, ' ');
+}
+
+// ==========================================
 // MIDDLEWARE DE SÉCURITÉ WEBHOOK (HMAC-SHA256)
 // ==========================================
 function verifierSignatureMeta(req, res, next) {
   if (!APP_SECRET) {
-    // Si APP_SECRET n'est pas encore défini dans l'environnement, on laisse passer pour le dev
     return next();
   }
 
@@ -50,7 +92,7 @@ function verifierSignatureMeta(req, res, next) {
     .digest('hex');
 
   if (signatureHash !== expectedHash) {
-    console.warn("❌ Requête Webhook rejetée : Signature invalide (tentative d'usurpation).");
+    console.warn("❌ Requête Webhook rejetée : Signature invalide.");
     return res.status(403).send("Signature invalide");
   }
 
@@ -83,43 +125,6 @@ async function envoyerTexte(to, text, phoneId) {
   } catch (err) {
     console.error("Erreur envoyerTexte:", err.response ? err.response.data : err.message);
   }
-}
-// Translations 
-const boutons = [
-  {title: t(user, 'btn_catalog'), id: 'BTN_CATALOG'},
-  {title: t(user, 'btn_sales'), id: 'BTN_SALES'},
-  {title: t(user, 'btn_help'), id 'BTN_HELP'}
-const translations = {
-  fr: {
-    lang_changed: "Langue changée en Français",
-    welcome: "Bienvenue {name} ! 👋 Choisissez une optionci-dessous ou envoyez un message au format Express (ex: Produit, 2, 5000).",
-    express_prompt: "💡 *Mode Express* : Envoyez directement vos articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
-    quota_warning: "⚠️ {name}, votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte."
-    btn_catalog: "Mon catalogue",
-    btn_sales: "Mes ventes",
-    btn_help: "Aide"
-  },
-  en: {
-    lang_changed: "Language changed to English",
-    welcome: "Welcome {name}! 👋 Choose an option below or send a message in Express format (e.g., Product, 2, 5000).",
-    express_prompt: "💡 *Express Mode*: Send your items directly using the format:\n`Product name, Quantity, Total price`\n\nExample:\n*Bag of rice, 2, 30000*",
-    quota_warning: "⚠️ {name}, your receipt quota is exhausted (0 remaining). Please top up your account."
-    btn_catalog: "My catalog",
-    btn_sales: "My sales",
-    btn_help: "Help"
-  }
-};
-
-// Helper de traduction amélioré avec gestion du prénom
-function t(user, key) {
-  const lang = (user && user.language) ? user.language : 'fr';
-  let text = translations[lang]?.[key] || translations['fr']?.[key] || key;
-  
-  // Extraire le prénom
-  const firstName = users.first_name || users.full_name?.split(' ')[0] || '';
-  
-  // Remplacer {name} par le prénom ou nettoyer l'espace
-  return text.replace('{name}', firstName).replace(/\s+/g, ' ');
 }
 
 // 2. Envoyer les boutons de validation du panier
@@ -169,13 +174,10 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
   const { data: products } = await supabase.from('products').select('*').limit(10);
 
   if (!products || products.length === 0) {
-    return await envoyerTexte(
-      phone,
-      "{name} Aucun produit configuré dans votre catalogue.\n\n" +
+    const noProdMsg = t(user, 'welcome') + "\nAucun produit configuré dans votre catalogue.\n\n" +
       "⚡ Vous pouvez directement utiliser le *Mode Express* en envoyant :\n" +
-      "`Nom Produit, Quantité, Prix Total`",
-      phoneId
-    );
+      "`Nom Produit, Quantité, Prix Total`";
+    return await envoyerTexte(phone, noProdMsg, phoneId);
   }
 
   const rows = products.map(p => ({
@@ -326,7 +328,7 @@ async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
   }
 }
 
-//7. Sauvegarde automatique des produits 
+// 7. Sauvegarde automatique des produits 
 async function autoSaveProducts(userId, items) {
   for (const item of items) {
     const unitPrice = Math.round(item.total_price / item.qty);
@@ -349,12 +351,11 @@ async function autoSaveProducts(userId, items) {
   }
 }
 
-// 8. GENERATION ET ENVOI DE L'IMAGE REÇU (CHARTE GRAPHIQUE B-TICKET)
+// 8. GENERATION ET ENVOI DE L'IMAGE REÇU
 async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
     const totalAmount = items.reduce((sum, item) => sum + item.total_price, 0);
 
-    // 1. Sauvegarde en base de données
     const { data: sale } = await supabase
       .from('sales')
       .insert([
@@ -370,7 +371,6 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     const saleId = sale ? sale.id : Date.now().toString().slice(-6);
 
-    // 2. Création de l'image (Charte B-Ticket)
     const baseHeight = 650;
     const itemHeight = 40;
     const height = baseHeight + (items.length * itemHeight);
@@ -480,7 +480,6 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     const imageBuffer = canvas.toBuffer('image/png');
 
-    // 3. Upload & Envoi
     const newQuota = user.receipt_quota - 1;
 
     const { error: updateError } = await supabase
@@ -488,10 +487,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       .update({ receipt_quota: newQuota })
       .eq('id', user.id);
 
-    if (updateError) {
-      console.error("Erreur lors de la mise à jour du quota :", updateError);
-    } else {
-    // Met à jour l'objet local pour le reste de la session
+    if (!updateError) {
       user.receipt_quota = newQuota;
     }
     
@@ -530,7 +526,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   const textUpper = text ? text.toUpperCase().trim() : '';
 
   // ------------------------------------------
-  // MODULE ADMINISTRATEUR (SÉCURISÉ)
+  // MODULE ADMINISTRATEUR
   // ------------------------------------------
   if (phone === ADMIN_PHONE) {
     if (textUpper === 'ADMIN' || textUpper === 'DASHBOARD') {
@@ -572,7 +568,9 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         const quota = parseInt(parts[2], 10);
         if (!isNaN(quota)) {
           await supabase.from('users').update({ is_approved: true, receipt_quota: quota }).eq('phone_number', targetPhone);
-          await envoyerTexte(targetPhone, `🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de ${quota} reçus.`, phoneId);
+          const { data: targetUser } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
+          const approvedText = t(targetUser, 'congrats_approved').replace('{quota}', quota);
+          await envoyerTexte(targetPhone, approvedText, phoneId);
           return await envoyerTexte(phone, `✅ Compte ${targetPhone} approuvé avec ${quota} reçus.`, phoneId);
         }
       }
@@ -584,11 +582,12 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         const targetPhone = parts[1].replace(/[^0-9]/g, '');
         const addQuota = parseInt(parts[2], 10);
         if (!isNaN(addQuota)) {
-          const { data: u } = await supabase.from('users').select('receipt_quota').eq('phone_number', targetPhone).single();
+          const { data: u } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
           if (u) {
             const newQ = (u.receipt_quota || 0) + addQuota;
             await supabase.from('users').update({ receipt_quota: newQ }).eq('phone_number', targetPhone);
-            await envoyerTexte(targetPhone, `{name}🎁 Votre compte a été rechargé de ${addQuota} reçus ! Nouveau solde : ${newQ} reçus.`, phoneId);
+            const rechargeText = t(u, 'recharge_success').replace('{quota}', addQuota).replace('{total}', newQ);
+            await envoyerTexte(targetPhone, rechargeText, phoneId);
             return await envoyerTexte(phone, `✅ Recharge effectuée pour ${targetPhone}. Nouveau total : ${newQ}`, phoneId);
           }
         }
@@ -602,8 +601,8 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
 
   if (!user) {
-    await supabase.from('users').insert([{ phone_number: phone, shop_name: 'Ma Boutique', is_approved: false, receipt_quota: 5 }]);
-    return await envoyerTexte(phone, "👋 Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.", phoneId);
+    const { data: newUser } = await supabase.from('users').insert([{ phone_number: phone, shop_name: 'Ma Boutique', is_approved: false, receipt_quota: 5 }]).select().single();
+    return await envoyerTexte(phone, t(newUser || { phone_number: phone }, 'welcome_new'), phoneId);
   }
 
   if (!user.is_approved) {
@@ -642,7 +641,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       return await ouvrirCatalogueVendeur(phone, user, phoneId);
     }
 
-  if (interactiveId === 'btn_finish_cart') {
+    if (interactiveId === 'btn_finish_cart') {
       if (conv && conv.data && conv.data.items && conv.data.items.length > 0) {
         await supabase.from('conversations').upsert({ phone_number: phone, step: 'ASK_CLIENT_NAME', data: conv.data });
         return await envoyerDemandeClient(phone, phoneId);
@@ -668,16 +667,16 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     }
   }
 
-// --------------------------------------
-// COMMANDE POUR CHANGER DE LANGUE
-// ---------------------------------------
+  // --------------------------------------
+  // COMMANDE POUR CHANGER DE LANGUE
+  // ---------------------------------------
   if (text && (text.toLowerCase() === '/lang' || text.toLowerCase() === 'langue')) {
-  const newLang = user.language === 'en' ? 'fr' : 'en';
-  await supabase.from('users').update({ language: newLang }).eq('id', user.id);
-  user.language = newLang;
-  return envoyerTexte(phone, t(user, 'lang_changed'), phoneId);
+    const newLang = user.language === 'en' ? 'fr' : 'en';
+    await supabase.from('users').update({ language: newLang }).eq('id', user.id);
+    user.language = newLang;
+    return await envoyerTexte(phone, t(user, 'lang_changed'), phoneId);
   }
-  
+
   // ------------------------------------------
   // GESTION DU MODE EXPRESS MULTI-ARTICLES (SÉPARATEUR VIRGULE)
   // ------------------------------------------
@@ -710,7 +709,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
 
     if (items.length > 0) {
       if (user.receipt_quota <= 0) {
-        return await envoyerTexte(phone, "⚠️ Votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.", phoneId);
+        return await envoyerTexte(phone, t(user, 'quota_warning'), phoneId);
       }
       await autoSaveProducts(user.id, items);
       return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
@@ -726,42 +725,8 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   }
 
   // MENU PAR DÉFAUT SI AUCUNE COMMANDE N'EST RECONNUE
-  return await envoyerTexte(
-    phone,
-    `⚡ *B-TICKET EXPRESS*\n\n` +
-    `Pour émettre un reçu instantané, envoyez les articles ainsi :\n` +
-    "`Nom Produit, Quantité, Prix Total`\n\n" +
-    "Exemple :\n" +
-    "`Client: Jean Dupont` (optionnel)\n" +
-    "`Sac de Riz, 2, 25000`\n" +
-    "`Bouteille Huile, 1, 1500`",
-    phoneId
-  );
-}
-
-// --------------------------------------------
-// FICHIERS DE TRADUCTIONS
-// --------------------------
-const translations = {
-  fr: {
-    welcome: "Bienvenue sur B-Ticket !",
-    quota_left: (q) => `Il vous reste ${q} reçus.`,
-    express_prompt: "Envoyez vos articles (ex: Sac 1 5000)...",
-    lang_changed: "Langue modifiée en Français"
-  },
-  en: {
-    welcome: "Welcome to B-Ticket!",
-    quota_left: (q) => `You have ${q} receipts left.`,
-    express_prompt: "Send your items (e.g., Bag 1 5000)...",
-    lang_changed: "Language changed to English"
-  }
-};
-
-// Petite fonction utilitaire
-function t(user, key, ...args) {
-  const lang = user?.language || 'fr';
-  const val = translations[lang][key];
-  return typeof val === 'function' ? val(...args) : val;
+  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}`;
+  return await envoyerTexte(phone, defaultMessage, phoneId);
 }
 
 // ==========================================
@@ -786,7 +751,7 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// POST : Réception des événements WhatsApp (avec vérification de signature)
+// POST : Réception des événements WhatsApp
 app.post('/webhook', verifierSignatureMeta, async (req, res) => {
   const body = req.body;
 
