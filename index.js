@@ -480,7 +480,8 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     const imageBuffer = canvas.toBuffer('image/png');
 
-    const newQuota = user.receipt_quota - 1;
+    // Décrémentation sécurisée du quota
+    const newQuota = Math.max(0, user.receipt_quota - 1);
 
     const { error: updateError } = await supabase
       .from('users')
@@ -752,10 +753,14 @@ app.get('/webhook', (req, res) => {
 });
 
 // POST : Réception des événements WhatsApp
-app.post('/webhook', verifierSignatureMeta, async (req, res) => {
+app.post('/webhook', verifierSignatureMeta, (req, res) => {
   const body = req.body;
 
   if (body.object === 'whatsapp_business_account') {
+    // 1. Envoi immédiat du 200 OK à Meta pour éviter les timeouts et renvois multiples
+    res.status(200).send('EVENT_RECEIVED');
+
+    // 2. Traitement asynchrone en arrière-plan
     if (
       body.entry &&
       body.entry[0].changes &&
@@ -779,9 +784,11 @@ app.post('/webhook', verifierSignatureMeta, async (req, res) => {
         }
       }
 
-      await traiterMessageEntrant(phone, text, interactiveId, phoneId);
+      // Exécution asynchrone sécurisée
+      traiterMessageEntrant(phone, text, interactiveId, phoneId).catch(err => {
+        console.error("❌ Erreur traitement message entrant:", err);
+      });
     }
-    res.status(200).send('EVENT_RECEIVED');
   } else {
     res.sendStatus(404);
   }
