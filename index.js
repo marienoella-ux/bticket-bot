@@ -127,6 +127,65 @@ async function envoyerTexte(to, text, phoneId) {
   }
 }
 
+//MENU PRINCIPAL 
+async function envoyerMenuPrincipal(phone, user, phoneId) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: phone,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: `Bonjour *${user.first_name}* ! Que souhaitez-vous faire ?\n\n💳 Solde : *${user.receipt_quota} reçus*` },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'btn_menu_catalog', title: '📦 Mon catalogue' } },
+              { type: 'reply', reply: { id: 'btn_menu_sales', title: '📊 Mes ventes' } },
+              { type: 'reply', reply: { id: 'btn_menu_help', title: '❓ Aide' } }
+            ]
+          }
+        }
+      },
+      { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
+    );
+  } catch (err) {
+    console.error("Erreur envoyerMenuPrincipal:", err.response ? err.response.data : err.message);
+  }
+}
+
+// HISTORIQUE DE VENTE
+async function envoyerHistoriqueVentes(phone, user, phoneId) {
+  const { data: sales, error } = await supabase
+    .from('sales')
+    .select('*')
+    .eq('user_id', user.phone_number)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (error || !sales || sales.length === 0) {
+    return await envoyerTexte(phone, "📊 Aucune vente enregistrée pour le moment.", phoneId);
+  }
+
+  let msg = `📊 *VOS 5 DERNIÈRES VENTES*\n\n`;
+  sales.forEach(s => {
+    const date = new Date(s.created_at).toLocaleDateString('fr-FR');
+    msg += `• ${date} — ${s.client_name} : *${s.total_amount.toLocaleString('fr-FR')} FCFA*\n`;
+  });
+  return await envoyerTexte(phone, msg, phoneId);
+}
+
+//AIDE
+async function envoyerAide(phone, user, phoneId) {
+  const msg = `❓ *AIDE B-TICKET*\n\n` +
+    `⚡ *Mode Express* — envoyez directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
+    `📦 *Menu guidé* — envoyez *MENU* pour choisir un article dans votre catalogue, consulter vos ventes, ou revoir cette aide.\n\n` +
+    `💳 Solde actuel : *${user.receipt_quota} reçus*`;
+  return await envoyerTexte(phone, msg, phoneId);
+}
+
 // 2. Envoyer les boutons de validation du panier
 async function envoyerBoutonsCart(phone, items, phoneId) {
   let recap = `🛒 *VOTRE PANIER ACTUEL (${items.length} article(s)) :*\n\n`;
@@ -629,6 +688,15 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       await supabase.from('conversations').delete().eq('phone_number', phone);
       return await envoyerTexte(phone, "❌ Vente annulée.", phoneId);
     }
+    if (interactiveId === 'btn_menu_catalog'){
+      return await ouvrirCatalogueVendeur(phone, user, phoneId);
+    }
+    if (interactiveId === 'btn_menu_sales'){
+      return await envoyerHistoriqueVentes(phone, user, phoneId);
+    }
+    if (interactiveId === 'btn_menu_help'){
+      return await envoyerAide(phone, user, phoneId);
+    }
 
     if (interactiveId === 'btn_client_default') {
       if (conv && conv.step === 'ASK_CLIENT_NAME') {
@@ -678,6 +746,11 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     return await envoyerTexte(phone, t(user, 'lang_changed'), phoneId);
   }
 
+  if (text && ['vente', 'menu', 'catalogue', 'catalog', 'aide', 'help'].includes(text.toLowerCase().trim())) {
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    return await envoyerMenuPrincipal(phone, user, phoneId);
+}
+
   // ------------------------------------------
   // GESTION DU MODE EXPRESS MULTI-ARTICLES (SÉPARATEUR VIRGULE)
   // ------------------------------------------
@@ -726,7 +799,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   }
 
   // MENU PAR DÉFAUT SI AUCUNE COMMANDE N'EST RECONNUE
-  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}`;
+  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\n0u envoyez *MENU* pour toutes les options.`;
   return await envoyerTexte(phone, defaultMessage, phoneId);
 }
 
