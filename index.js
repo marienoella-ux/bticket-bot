@@ -552,6 +552,11 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     } else {
       user.receipt_quota = newQuota;
       console.log(`✅ Quota mis à jour pour ${user.phone_number} → ${newQuota}`);
+    } else if (!updateData || updateData.length === 0) {
+      console.error(`⚠️ AUCUNE LIGNE TROUVÉE pour phone_number = "${user.phone_number}" (longueur: ${user.phone_number?.length})`);
+    } else {
+      user.receipt_quota = newQuota;
+      console.log(`✅ Quota mis à jour pour ${user.phone_number} → ${newQuota}`, updateData);
     }
     
     const mediaRes = await uploaderMediaWhatsApp(imageBuffer, 'image/png', phoneId);
