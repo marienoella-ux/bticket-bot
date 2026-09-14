@@ -547,8 +547,11 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       .update({ receipt_quota: newQuota })
       .eq('phone_number', user.id);
 
-    if (!updateError) {
+    if (updateError) {
+      console.error("❌ ÉCHEC MISE À JOUR QUOTA:", updateError);
+    } else {
       user.receipt_quota = newQuota;
+      console.log(`✅ Quota mis à jour pour ${user.phone_number} → ${newQuota}`);
     }
     
     const mediaRes = await uploaderMediaWhatsApp(imageBuffer, 'image/png', phoneId);
