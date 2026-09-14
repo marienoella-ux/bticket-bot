@@ -545,7 +545,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const { error: updateError } = await supabase
       .from('users')
       .update({ receipt_quota: newQuota })
-      .eq('id', user.id);
+      .eq('phone_number', user.id);
 
     if (!updateError) {
       user.receipt_quota = newQuota;
