@@ -545,7 +545,8 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const { error: updateError } = await supabase
       .from('users')
       .update({ receipt_quota: newQuota })
-      .eq('phone_number', user.id);
+      .eq('phone_number', user.id)
+      .select();
 
     if (updateError) {
       console.error("❌ ÉCHEC MISE À JOUR QUOTA:", updateError);
