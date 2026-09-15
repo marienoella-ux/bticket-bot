@@ -711,6 +711,17 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         const items = conv.data.items;
         return await afficherRecuEbauche(phone, user, items, 'Client Comptoir', phoneId);
       }
+  // ⬇️ NOUVEAU : réception de la preuve de recharge
+    if (conv && conv.step === 'AWAITING_RECHARGE_PROOF' && text) {
+      await supabase.from('conversations').delete().eq('phone_number', phone);
+      await envoyerTexte(ADMIN_PHONE,
+        `💰 *Demande de recharge*\n\nVendeur : ${user.shop_name} (${phone})\nMontant annoncé : ${text.trim()} FCFA\n\nValider : RECHARGE ${phone} <quota>`,
+        phoneId
+      );
+      return await envoyerTexte(phone, "✅ Demande transmise. Vous recevrez une confirmation une fois le paiement vérifié.", phoneId);
+    }
+    // ⬆️ FIN NOUVEAU
+
     }
 
     if (interactiveId === 'btn_add_more') {
@@ -758,7 +769,25 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     await supabase.from('conversations').delete().eq('phone_number', phone);
     return await envoyerMenuPrincipal(phone, user, phoneId);
 }
+  // ⬇️ NOUVEAU : déclencheur du menu principal
+  if (text && ['vente', 'menu', 'catalogue', 'aide', 'help'].includes(text.toLowerCase().trim())) {
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    return await envoyerMenuPrincipal(phone, user, phoneId);
+  }
 
+  // ⬇️ ENCORE NOUVEAU : déclencheur de demande de recharge
+  if (text && text.toLowerCase().trim() === 'recharge') {
+    await envoyerTexte(phone,
+      `💳 *Recharger votre compte*\n\n` +
+      `1. Effectuez le paiement au code marchand Orange Money : *[ton code]*\n` +
+      `2. Répondez ici avec le *montant payé* pour confirmer votre demande\n\n` +
+      `Un administrateur validera votre recharge sous peu.`,
+      phoneId
+    );
+    await supabase.from('conversations').upsert({ phone_number: phone, step: 'AWAITING_RECHARGE_PROOF' });
+    return;
+  }
+  // ⬆️ FIN NOUVEAU
   // ------------------------------------------
   // GESTION DU MODE EXPRESS MULTI-ARTICLES (SÉPARATEUR VIRGULE)
   // ------------------------------------------
