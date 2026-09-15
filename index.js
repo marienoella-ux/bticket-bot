@@ -542,24 +542,21 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     // Décrémentation sécurisée du quota
     const newQuota = Math.max(0, user.receipt_quota - 1);
 
-    const { error: updateError } = await supabase
+    const { data: updateData, error: updateError } = await supabase
       .from('users')
       .update({ receipt_quota: newQuota })
-      .eq('phone_number', user.id)
+      .eq('phone_number', user.phone_number)
       .select();
 
     if (updateError) {
       console.error("❌ ÉCHEC MISE À JOUR QUOTA:", updateError);
-    } else {
-      user.receipt_quota = newQuota;
-      console.log(`✅ Quota mis à jour pour ${user.phone_number} → ${newQuota}`);
     } else if (!updateData || updateData.length === 0) {
       console.error(`⚠️ AUCUNE LIGNE TROUVÉE pour phone_number = "${user.phone_number}" (longueur: ${user.phone_number?.length})`);
     } else {
       user.receipt_quota = newQuota;
       console.log(`✅ Quota mis à jour pour ${user.phone_number} → ${newQuota}`, updateData);
     }
-    
+
     const mediaRes = await uploaderMediaWhatsApp(imageBuffer, 'image/png', phoneId);
 
     if (mediaRes && mediaRes.data && mediaRes.data.id) {
