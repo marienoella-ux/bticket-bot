@@ -278,7 +278,28 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
 }
 
 // 4. Demander le nom du client
-async function envoyerDemandeClient(phone, phoneId) {
+async function envoyerDemandeClient(phone, user, phoneId) {
+  const { data: recentSales } = await supabase
+    .from('sales')
+    .select('client_name')
+    .eq('user_id', user.phone_number)
+    .neq('client_name', 'Client Comptoir')
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  const frequents = [...new Set((recentSales || []).map(s => s.client_name))].slice(0, 2);
+
+  const buttons = frequents.map((name, i) => ({
+    type: 'reply',
+    reply: { id: `client_recent_${i}`, title: name.substring(0, 20) }
+  }));
+  buttons.push({ type: 'reply', reply: { id: 'btn_client_default', title: '👤 Client Comptoir' } });
+
+  if (frequents.length > 0) {
+    await supabase.from('conversations').update({ data: { ...conv.data, frequents } }).eq('phone_number', phone);
+  }
+
+
   try {
     await axios.post(
       `https://graph.facebook.com/v18.0/${phoneId}/messages`,
@@ -289,26 +310,16 @@ async function envoyerDemandeClient(phone, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: "👤 *À quel nom souhaitez-vous émettre le reçu ?*\n\nRépondez directement avec le nom du client (ex: *Mme Alice*), ou cliquez sur le bouton ci-dessous pour un client anonyme." },
-          action: {
-            buttons: [
-              { type: 'reply', reply: { id: 'btn_client_default', title: '👤 Client Comptoir' } }
-            ]
-          }
+          body: { text: "👤 *À quel nom souhaitez-vous émettre le reçu ?*\n\nChoisissez un client récent, ou répondez directement avec un nom." },
+          action: { buttons }
         }
       },
-      {
-        headers: {
-          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      }
+      { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
     console.error("Erreur envoyerDemandeClient:", err.response ? err.response.data : err.message);
   }
 }
-
 // 5. Afficher le récapitulatif avant impression finale
 async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
   let recap = `*RÉCAPITULATIF DE LA VENTE*\n`;
@@ -775,27 +786,39 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     if (interactiveId === 'btn_finish_cart') {
       if (conv && conv.data && conv.data.items && conv.data.items.length > 0) {
         await supabase.from('conversations').upsert({ phone_number: phone, step: 'ASK_CLIENT_NAME', data: conv.data });
-        return await envoyerDemandeClient(phone, phoneId);
+        return await envoyerDemandeClient(phone, user, conv, phoneId);
       }
     }
 
-    if (interactiveId.startsWith('prod_')) {
-      const prodId = interactiveId.replace('prod_', '');
-      const { data: prod } = await supabase.from('products').select('*').eq('id', prodId).single();
-
-      if (prod) {
-        const currentItems = (conv && conv.data && conv.data.items) ? conv.data.items : [];
-        currentItems.push({ name: prod.name, qty: 1, total_price: prod.price || 0 });
-
-        await supabase.from('conversations').upsert({
-          phone_number: phone,
-          step: 'CART_ACTIVE',
-          data: { items: currentItems }
-        });
-
-        return await envoyerBoutonsCart(phone, currentItems, phoneId);
+    if (interactiveId === 'client_recent_0' || interactiveId === 'client_recent_1') {
+      if (conv && conv.step === 'ASK_CLIENT_NAME') {
+        const idx = interactiveId === 'client_recent_0' ? 0 : 1;
+        const clientName = conv.data.frequents ? conv.data.frequents[idx] : null;
+        if (clientName) {
+          return await afficherRecuEbauche(phone, user, conv.data.items, clientName, phoneId);
+        }
       }
     }
+
+if (interactiveId.startsWith('prod_')) {
+  const prodId = interactiveId.replace('prod_', '');
+  const { data: prod } = await supabase.from('products').select('*').eq('id', prodId).single();
+
+  if (prod) {
+    const existingItems = (conv && conv.data && conv.data.items) ? conv.data.items : [];
+    await supabase.from('conversations').upsert({
+      phone_number: phone,
+      step: 'NEGOTIATE_PRICE',
+      data: { items: existingItems, current_product: prod }
+    });
+    return await envoyerTexte(
+      phone,
+      `📦 *${prod.name}* — prix catalogue : ${prod.price.toLocaleString('fr-FR')} FCFA\n\n` +
+      `Quantité et prix convenu ? (ex: \`2, 4500\`)\nOu juste la quantité si le prix catalogue s'applique (ex: \`2\`)`,
+      phoneId
+    );
+  }
+}
   }
 
   // --------------------------------------
@@ -862,6 +885,28 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       await autoSaveProducts(user.phone_number, items);
       return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
     }
+  }
+    // ⬇️ NOUVEAU : réception de la quantité / prix négocié
+  if (conv && conv.step === 'NEGOTIATE_PRICE' && text) {
+    const prod = conv.data.current_product;
+    let qty, finalPrice;
+
+    if (text.includes(',')) {
+      const parts = text.split(',');
+      qty = parseInt(parts[0].replace(/[^0-9]/g, ''), 10) || 1;
+      finalPrice = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
+    } else {
+      qty = parseInt(text.replace(/[^0-9]/g, ''), 10) || 1;
+      finalPrice = prod.price * qty;
+    }
+
+    if (!finalPrice || finalPrice <= 0) {
+      return await envoyerTexte(phone, "Montant invalide. Exemple : `2, 4500` ou juste `2`.", phoneId);
+    }
+
+    const items = [...(conv.data.items || []), { name: prod.name, qty, total_price: finalPrice }];
+    await supabase.from('conversations').update({ step: 'CART_ACTIVE', data: { items } }).eq('phone_number', phone);
+    return await envoyerBoutonsCart(phone, items, phoneId);
   }
 
   // ------------------------------------------
