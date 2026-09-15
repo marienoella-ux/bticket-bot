@@ -413,18 +413,20 @@ async function autoSaveProducts(userId, items) {
 // 8. GENERATION ET ENVOI DE L'IMAGE REÇU
 async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
+    // Blocage si le quota est déjà épuisé — avant tout traitement, toute écriture en base
+    if (!user.receipt_quota || user.receipt_quota <= 0) {
+      return await envoyerTexte(
+        phone,
+        `⚠️ *Solde épuisé (0 reçu restant).*\n\nVeuillez recharger votre compte pour continuer à générer des reçus.`,
+        phoneId
+      );
+    }
+
     const totalAmount = items.reduce((sum, item) => sum + item.total_price, 0);
 
     const { data: sale } = await supabase
       .from('sales')
-      .insert([
-        {
-          user_id: user.phone_number,
-          client_name: clientName,
-          total_amount: totalAmount,
-          items: items
-        }
-      ])
+      .insert([{ user_id: user.phone_number, client_name: clientName, total_amount: totalAmount, items: items }])
       .select()
       .single();
 
