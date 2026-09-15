@@ -25,6 +25,7 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 // --- INITIALISATION SUPABASE ---
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const messagesTraites = new Set();
 
 // ==========================================
 // SYSTEME DE TRADUCTIONS ET HELPERS MULTI-LANGUES
@@ -33,27 +34,27 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const translations = {
   fr: {
     lang_changed: "Langue changée en Français 🇫🇷",
-    welcome: "Bienvenue {name} ! 👋 Choisissez une option ci-dessous ou envoyez un message au format Express (ex: Produit, 2, 5000).",
-    express_prompt: "💡 *Mode Express* : Envoyez directement vos articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
-    quota_warning: "⚠️ {name}, votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.",
-    btn_catalog: "📦 Mon catalogue",
-    btn_sales: "📊 Mes ventes",
+    welcome: "Bienvenue {name} ! Choisissez une option ci-dessous ou envoyez un message au format Express (ex: Produit, 2, 5000).",
+    express_prompt: "*Mode Express* : Envoyez directement vos articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
+    quota_warning: "{name}, votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.",
+    btn_catalog: "Mon catalogue",
+    btn_sales: "Mes ventes",
     btn_help: "❓ Aide",
-    welcome_new: "👋 Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
+    welcome_new: "Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
     congrats_approved: "🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de {quota} reçus.",
-    recharge_success: "{name} 🎁 Votre compte a été rechargé de {quota} reçus ! Nouveau solde : {total} reçus."
+    recharge_success: "{name} Votre compte a été rechargé de {quota} reçus ! Nouveau solde : {total} reçus."
   },
   en: {
     lang_changed: "Language changed to English 🇬🇧",
-    welcome: "Welcome {name}! 👋 Choose an option below or send a message in Express format (e.g., Product, 2, 5000).",
-    express_prompt: "💡 *Express Mode*: Send your items directly using the format:\n`Product name, Quantity, Total price`\n\nExample:\n*Bag of rice, 2, 30000*",
-    quota_warning: "⚠️ {name}, your receipt quota is exhausted (0 remaining). Please top up your account.",
-    btn_catalog: "📦 My catalog",
-    btn_sales: "📊 My sales",
+    welcome: "Welcome {name}! Choose an option below or send a message in Express format (e.g., Product, 2, 5000).",
+    express_prompt: "*Express Mode*: Send your items directly using the format:\n`Product name, Quantity, Total price`\n\nExample:\n*Bag of rice, 2, 30000*",
+    quota_warning: "{name}, your receipt quota is exhausted (0 remaining). Please top up your account.",
+    btn_catalog: "My catalog",
+    btn_sales: "My sales",
     btn_help: "❓ Help",
-    welcome_new: "👋 Welcome to B-Ticket Express {name}!\n\nYour account is being activated by our team. You will receive a notification shortly.",
+    welcome_new: "Welcome to B-Ticket Express {name}!\n\nYour account is being activated by our team. You will receive a notification shortly.",
     congrats_approved: "🎉 Congratulations {name}! Your B-Ticket account has been approved with a quota of {quota} receipts.",
-    recharge_success: "{name} 🎁 Your account has been topped up with {quota} receipts! New balance: {total} receipts."
+    recharge_success: "{name} Your account has been topped up with {quota} receipts! New balance: {total} receipts."
   }
 };
 
@@ -139,11 +140,11 @@ async function envoyerMenuPrincipal(phone, user, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: `Bonjour *${user.first_name}* ! Que souhaitez-vous faire ?\n\n💳 Solde : *${user.receipt_quota} reçus*` },
+          body: { text: `Bonjour *${user.first_name}* ! Que souhaitez-vous faire ?\n\nSolde : *${user.receipt_quota} reçus*` },
           action: {
             buttons: [
-              { type: 'reply', reply: { id: 'btn_menu_catalog', title: '📦 Mon catalogue' } },
-              { type: 'reply', reply: { id: 'btn_menu_sales', title: '📊 Mes ventes' } },
+              { type: 'reply', reply: { id: 'btn_menu_catalog', title: 'Mon catalogue' } },
+              { type: 'reply', reply: { id: 'btn_menu_sales', title: 'Mes ventes' } },
               { type: 'reply', reply: { id: 'btn_menu_help', title: '❓ Aide' } }
             ]
           }
@@ -166,10 +167,10 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
     .limit(5);
 
   if (error || !sales || sales.length === 0) {
-    return await envoyerTexte(phone, "📊 Aucune vente enregistrée pour le moment.", phoneId);
+    return await envoyerTexte(phone, "Aucune vente enregistrée pour le moment.", phoneId);
   }
 
-  let msg = `📊 *VOS 5 DERNIÈRES VENTES*\n\n`;
+  let msg = `*VOS 5 DERNIÈRES VENTES*\n\n`;
   sales.forEach(s => {
     const date = new Date(s.created_at).toLocaleDateString('fr-FR');
     msg += `• ${date} — ${s.client_name} : *${s.total_amount.toLocaleString('fr-FR')} FCFA*\n`;
@@ -180,21 +181,21 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
 //AIDE
 async function envoyerAide(phone, user, phoneId) {
   const msg = `❓ *AIDE B-TICKET*\n\n` +
-    `⚡ *Mode Express* — envoyez directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
-    `📦 *Menu guidé* — envoyez *MENU* pour choisir un article dans votre catalogue, consulter vos ventes, ou revoir cette aide.\n\n` +
-    `💳 Solde actuel : *${user.receipt_quota} reçus*`;
+    `*Mode Express* — envoyez directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
+    `*Menu guidé* — envoyez *MENU* pour choisir un article dans votre catalogue, consulter vos ventes, ou revoir cette aide.\n\n` +
+    `Solde actuel : *${user.receipt_quota} reçus*`;
   return await envoyerTexte(phone, msg, phoneId);
 }
 
 // 2. Envoyer les boutons de validation du panier
 async function envoyerBoutonsCart(phone, items, phoneId) {
-  let recap = `🛒 *VOTRE PANIER ACTUEL (${items.length} article(s)) :*\n\n`;
+  let recap = `*VOTRE PANIER ACTUEL (${items.length} article(s)) :*\n\n`;
   let total = 0;
   items.forEach((item, index) => {
     recap += `${index + 1}. *${item.name}* (x${item.qty}) - ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
     total += item.total_price;
   });
-  recap += `\n💰 *Total temporaire :* ${total.toLocaleString('fr-FR')} FCFA`;
+  recap += `\n*Total temporaire :* ${total.toLocaleString('fr-FR')} FCFA`;
 
   try {
     await axios.post(
@@ -234,7 +235,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
 
   if (!products || products.length === 0) {
     const noProdMsg = t(user, 'welcome') + "\nAucun produit configuré dans votre catalogue.\n\n" +
-      "⚡ Vous pouvez directement utiliser le *Mode Express* en envoyant :\n" +
+      "Vous pouvez directement utiliser le *Mode Express* en envoyant :\n" +
       "`Nom Produit, Quantité, Prix Total`";
     return await envoyerTexte(phone, noProdMsg, phoneId);
   }
@@ -255,7 +256,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'list',
-          header: { type: 'text', text: '🛍️ CATALOGUE B-TICKET' },
+          header: { type: 'text', text: 'CATALOGUE B-TICKET' },
           body: { text: 'Sélectionnez un article à ajouter au reçu :' },
           footer: { text: 'B-Ticket Express' },
           action: {
@@ -310,8 +311,8 @@ async function envoyerDemandeClient(phone, phoneId) {
 
 // 5. Afficher le récapitulatif avant impression finale
 async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
-  let recap = `🧾 *RÉCAPITULATIF DE LA VENTE*\n`;
-  recap += `🏪 Boutique : *${user.shop_name}*\n`;
+  let recap = `*RÉCAPITULATIF DE LA VENTE*\n`;
+  recap += `Boutique : *${user.shop_name}*\n`;
   recap += `👤 Client : *${clientName}*\n`;
   recap += `-----------------------------------\n`;
 
@@ -605,9 +606,9 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       const adminMsg = 
         `📊 *TABLEAU DE BORD ADMIN B-TICKET*\n` +
         `-----------------------------------\n` +
-        `👥 *Commerçants inscrits :* ${totalUsers || 0}\n` +
-        `⏳ *En attente de validation :* ${pendingUsers || 0}\n` +
-        `📦 *Articles au catalogue :* ${totalProducts || 0}\n\n` +
+        `*Commerçants inscrits :* ${totalUsers || 0}\n` +
+        `*En attente de validation :* ${pendingUsers || 0}\n` +
+        `*Articles au catalogue :* ${totalProducts || 0}\n\n` +
         `*COMMANDES DISPONIBLES :*\n` +
         `• *ATTENTE* : Voir les comptes non approuvés.\n` +
         `• *VALIDER <numéro> <quota>* : Approuver un compte.\n` +
@@ -621,7 +622,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       if (!pending || pending.length === 0) {
         return await envoyerTexte(phone, "✅ Aucun compte en attente de validation.", phoneId);
       }
-      let listMsg = "⏳ *COMPTES EN ATTENTE :*\n\n";
+      let listMsg = "*COMPTES EN ATTENTE :*\n\n";
       pending.forEach(u => {
         listMsg += `• Nom: ${u.shop_name} | Num: ${u.phone_number}\n`;
       });
@@ -664,21 +665,74 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   }
 
   // ------------------------------------------
-  // CHARGEMENT PROFIL UTILISATEUR
+  // CHARGEMENT PROFIL UTILISATEUR + CONVERSATION
   // ------------------------------------------
   let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
+  const { data: conv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
 
   if (!user) {
-    const { data: newUser } = await supabase.from('users').insert([{ phone_number: phone, shop_name: 'Ma Boutique', is_approved: false, receipt_quota: 5 }]).select().single();
-    return await envoyerTexte(phone, t(newUser || { phone_number: phone }, 'welcome_new'), phoneId);
+    if (!conv) {
+      await supabase.from('conversations').upsert({ phone_number: phone, step: 'ONBOARDING_FIRST_NAME' });
+      return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nQuel est votre *prénom* ?", phoneId);
+    }
+
+    if (conv.step === 'ONBOARDING_FIRST_NAME') {
+      await supabase.from('conversations').update({
+        step: 'ONBOARDING_SHOP_NAME',
+        data: { first_name: text.trim() }
+      }).eq('phone_number', phone);
+      return await envoyerTexte(phone, `Ravi de vous rencontrer ${text.trim()} ! 👋\n\nQuel est le *nom de votre boutique* ?`, phoneId);
+    }
+
+    if (conv.step === 'ONBOARDING_SHOP_NAME') {
+      await supabase.from('users').insert([{
+        phone_number: phone,
+        first_name: conv.data.first_name,
+        shop_name: text.trim(),
+        is_approved: false,
+        receipt_quota: 0
+      }]);
+      await supabase.from('conversations').update({
+        step: 'ONBOARDING_CATALOG',
+        data: { ...conv.data, shop_name: text.trim() }
+      }).eq('phone_number', phone);
+      return await envoyerTexte(phone,
+        `Parfait ! Une dernière étape : ajoute quelques articles à ton catalogue.\n\n` +
+        `Envoie *Nom, Prix* (ex: Coupe, 1500), un par un.\n` +
+        `Écris *FIN* quand tu as terminé, ou *PASSER* pour configurer plus tard.`,
+        phoneId);
+    }
+
+    if (conv.step === 'ONBOARDING_CATALOG') {
+      const tLower = text.trim().toLowerCase();
+      if (tLower === 'fin' || tLower === 'passer') {
+        await supabase.from('conversations').delete().eq('phone_number', phone);
+        await envoyerTexte(ADMIN_PHONE,
+          `🔔 Nouvelle inscription : ${conv.data.first_name} — boutique *${conv.data.shop_name}* (${phone})\nValider : VALIDER ${phone} 100`,
+          phoneId);
+        return await envoyerTexte(phone,
+          tLower === 'fin' ? "✅ Catalogue enregistré ! Ton compte est en attente de validation."
+                            : "D'accord, tu pourras configurer ton catalogue plus tard. Ton compte est en attente de validation.",
+          phoneId);
+      }
+
+      const parts = text.split(',').map(p => p.trim());
+      const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
+      if (parts.length === 2 && parts[0] && price > 0) {
+        await supabase.from('products').insert({ user_phone: phone, name: parts[0], price });
+        return await envoyerTexte(phone, `✅ *${parts[0]}* ajouté (${price.toLocaleString('fr-FR')} FCFA). Un autre ? Sinon écris *FIN*.`, phoneId);
+      }
+      return await envoyerTexte(phone, "Format non reconnu. Exemple : *Coupe, 1500* — ou écris *FIN*.", phoneId);
+    }
+
+    // Cas de repli : conv existe mais avec un step inconnu — on relance proprement
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nQuel est votre *prénom* ?", phoneId);
   }
 
   if (!user.is_approved) {
     return await envoyerTexte(phone, "⏳ Votre compte est en attente d'approbation par l'administrateur. Merci de patienter !", phoneId);
   }
-
-  // RÉCUPÉRATION DE L'ÉTAT DE LA CONVERSATION
-  const { data: conv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
 
   // ------------------------------------------
   // CLIC SUR LES BOUTONS INTERACTIFS
@@ -711,17 +765,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         const items = conv.data.items;
         return await afficherRecuEbauche(phone, user, items, 'Client Comptoir', phoneId);
       }
-  // ⬇️ NOUVEAU : réception de la preuve de recharge
-    if (conv && conv.step === 'AWAITING_RECHARGE_PROOF' && text) {
-      await supabase.from('conversations').delete().eq('phone_number', phone);
-      await envoyerTexte(ADMIN_PHONE,
-        `💰 *Demande de recharge*\n\nVendeur : ${user.shop_name} (${phone})\nMontant annoncé : ${text.trim()} FCFA\n\nValider : RECHARGE ${phone} <quota>`,
-        phoneId
-      );
-      return await envoyerTexte(phone, "✅ Demande transmise. Vous recevrez une confirmation une fois le paiement vérifié.", phoneId);
-    }
-    // ⬆️ FIN NOUVEAU
-
     }
 
     if (interactiveId === 'btn_add_more') {
@@ -760,7 +803,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
   // ---------------------------------------
   if (text && (text.toLowerCase() === '/lang' || text.toLowerCase() === 'langue')) {
     const newLang = user.language === 'en' ? 'fr' : 'en';
-    await supabase.from('users').update({ language: newLang }).eq('id', user.id);
+    await supabase.from('users').update({ language: newLang }).eq('phone_number', user.phone_number);
     user.language = newLang;
     return await envoyerTexte(phone, t(user, 'lang_changed'), phoneId);
   }
@@ -769,12 +812,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     await supabase.from('conversations').delete().eq('phone_number', phone);
     return await envoyerMenuPrincipal(phone, user, phoneId);
 }
-  // ⬇️ NOUVEAU : déclencheur du menu principal
-  if (text && ['vente', 'menu', 'catalogue', 'aide', 'help'].includes(text.toLowerCase().trim())) {
-    await supabase.from('conversations').delete().eq('phone_number', phone);
-    return await envoyerMenuPrincipal(phone, user, phoneId);
-  }
-
   // ⬇️ ENCORE NOUVEAU : déclencheur de demande de recharge
   if (text && text.toLowerCase().trim() === 'recharge') {
     await envoyerTexte(phone,
@@ -834,9 +871,18 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
     const items = conv.data.items;
     return await afficherRecuEbauche(phone, user, items, text.trim(), phoneId);
   }
+    // Réception de la preuve de recharge
+  if (conv && conv.step === 'AWAITING_RECHARGE_PROOF' && text) {
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    await envoyerTexte(ADMIN_PHONE,
+      `*Demande de recharge*\n\nVendeur : ${user.shop_name} (${phone})\nMontant annoncé : ${text.trim()} FCFA\n\nValider : RECHARGE ${phone} <quota>`,
+      phoneId
+    );
+    return await envoyerTexte(phone, "✅ Demande transmise. Vous recevrez une confirmation une fois le paiement vérifié.", phoneId);
+  }
 
   // MENU PAR DÉFAUT SI AUCUNE COMMANDE N'EST RECONNUE
-  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\n0u envoyez *MENU* pour toutes les options.`;
+  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\nOu envoyez *MENU* pour toutes les options.`;
   return await envoyerTexte(phone, defaultMessage, phoneId);
 }
 
@@ -880,6 +926,14 @@ app.post('/webhook', verifierSignatureMeta, (req, res) => {
       const message = body.entry[0].changes[0].value.messages[0];
       const phoneId = body.entry[0].changes[0].value.metadata.phone_number_id;
       const phone = message.from;
+            if (messagesTraites.has(message.id)) {
+        console.log("Doublon ignoré :", message.id);
+        return;
+      }
+      messagesTraites.add(message.id);
+      if (messagesTraites.size > 500) {
+        messagesTraites.clear();
+      }
 
       let text = null;
       let interactiveId = null;
