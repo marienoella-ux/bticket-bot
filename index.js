@@ -2,8 +2,10 @@ const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const FormData = require('form-data');
-const { createCanvas } = require('@napi-rs/canvas');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { createClient } = require('@supabase/supabase-js');
+const BRAINIACS_ICON_B64 = "PASTE_LA_CHAINE_ICI";
+let brainiacsIconImg = null; // mis en cache après le premier chargement
 
 const app = express();
 
@@ -369,28 +371,19 @@ async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
 }
 
 // 6. Uploader l'image vers Meta WhatsApp Media
-async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
-  try {
-    const form = new FormData();
-    form.append('file', imageBuffer, { filename: 'recu.png', contentType: mimeType });
-    form.append('type', 'image');
-    form.append('messaging_product', 'whatsapp');
-
-    const res = await axios.post(
-      `https://graph.facebook.com/v18.0/${phoneId}/media`,
-      form,
-      {
-        headers: {
-          ...form.getHeaders(),
-          Authorization: `Bearer ${META_ACCESS_TOKEN}`
-        }
-      }
-    );
-    return res;
-  } catch (err) {
-    console.error("Erreur uploaderMediaWhatsApp:", err.response ? err.response.data : err.message);
+async function sauvegarderLogo(phone, imageBuffer, mimeType) {
+  const ext = mimeType && mimeType.includes('png') ? 'png' : 'jpg';
+  const filePath = `${phone}.${ext}`;
+  const { error } = await supabase.storage.from('logos').upload(filePath, imageBuffer, {
+    contentType: mimeType || 'image/jpeg',
+    upsert: true
+  });
+  if (error) {
+    console.error("Erreur upload logo:", error);
     return null;
   }
+  const { data } = supabase.storage.from('logos').getPublicUrl(filePath);
+  return data.publicUrl;
 }
 
 // 7. Sauvegarde automatique des produits 
@@ -438,10 +431,10 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     const saleId = sale ? sale.id : Date.now().toString().slice(-6);
 
-    const baseHeight = 650;
-    const itemHeight = 40;
+    const width = 650;
+    const baseHeight = 700;
+    const itemHeight = 42;
     const height = baseHeight + (items.length * itemHeight);
-    const width = 600;
 
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
@@ -450,100 +443,225 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const encreMarche = '#015E54';
     const ambreVif = '#F2A63A';
     const encreDouce = '#4B6660';
+    const ligneClair = '#E3D9C2';
 
-    ctx.fillStyle = papierTicket;
+    function drawRoundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    // Fond général + carte
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+    bgGradient.addColorStop(0, '#FBF6EC');
+    bgGradient.addColorStop(1, '#FEFDFA');
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = encreMarche;
-    ctx.fillRect(40, 40, width - 80, 100);
-
-    ctx.fillStyle = papierTicket;
-    ctx.beginPath();
-    ctx.arc(40, 90, 15, 0, Math.PI * 2);
-    ctx.arc(width - 40, 90, 15, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = papierTicket;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(115, 50);
-    ctx.lineTo(115, 130);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.fillStyle = papierTicket;
-    ctx.font = 'bold 38px sans-serif';
-    ctx.fillText('B', 70, 102);
-    ctx.fillText('Ticket', 130, 102);
-
-    const receiptNum = `#BT-${saleId}`;
-    const dateStr = new Date().toLocaleDateString('fr-FR');
-
-    ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 28px sans-serif';
-    ctx.fillText(user.shop_name.toUpperCase(), 50, 190);
-
-    ctx.fillStyle = encreDouce;
-    ctx.font = '18px monospace';
-    ctx.fillText(`N° ${receiptNum}  |  Date: ${dateStr}`, 50, 220);
-
-    ctx.strokeStyle = encreDouce;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(50, 250);
-    ctx.lineTo(width - 50, 250);
+    ctx.strokeStyle = ligneClair;
+    ctx.lineWidth = 1.5;
+    drawRoundRect(16, 16, width - 32, height - 32, 14);
     ctx.stroke();
 
-    ctx.fillStyle = encreDouce;
-    ctx.font = '16px sans-serif';
-    ctx.fillText('CLIENT:', 50, 290);
-    ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText(clientName, 130, 290);
+    let logoImg = null;
+    if (user.logo_url) {
+      try {
+        const logoRes = await axios.get(user.logo_url, { responseType: 'arraybuffer' });
+        logoImg = await loadImage(Buffer.from(logoRes.data));
+      } catch (e) {
+        console.error("Logo introuvable, fallback sans logo:", e.message);
+      }
+    }
 
-    let currentY = 350;
-    ctx.fillStyle = encreDouce;
-    ctx.font = '16px sans-serif';
-    ctx.fillText('ARTICLE', 50, currentY);
-    ctx.fillText('QTY', 380, currentY);
-    ctx.fillText('P.U', 480, currentY);
+    let headerBottom;
 
-    currentY += 35;
+    if (logoImg) {
+      // --- En-tête avec logo du commerçant ---
+      const boxX = 44, boxY = 44, boxSize = 92;
+      ctx.fillStyle = '#FFFFFF';
+      drawRoundRect(boxX, boxY, boxSize, boxSize, 12);
+      ctx.fill();
+      ctx.strokeStyle = ligneClair;
+      ctx.stroke();
 
-    items.forEach(item => {
-      const unitPrice = Math.round(item.total_price / item.qty);
+      ctx.save();
+      drawRoundRect(boxX + 6, boxY + 6, boxSize - 12, boxSize - 12, 8);
+      ctx.clip();
+      const scale = Math.max((boxSize - 12) / logoImg.width, (boxSize - 12) / logoImg.height);
+      const lw = logoImg.width * scale, lh = logoImg.height * scale;
+      ctx.drawImage(logoImg, boxX + 6 + (boxSize - 12 - lw) / 2, boxY + 6 + (boxSize - 12 - lh) / 2, lw, lh);
+      ctx.restore();
 
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 18px sans-serif';
-      ctx.fillText(item.name.substring(0, 22), 50, currentY);
+      ctx.font = 'bold 30px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(user.shop_name.toUpperCase(), boxX + boxSize + 20, boxY + 40);
 
-      ctx.font = '18px monospace';
-      ctx.fillText(`${item.qty}`, 380, currentY);
-      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 480, currentY);
+      ctx.strokeStyle = ambreVif;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(boxX + boxSize + 20, boxY + 54);
+      ctx.lineTo(boxX + boxSize + 20 + 160, boxY + 54);
+      ctx.stroke();
+
+      ctx.fillStyle = encreDouce;
+      ctx.font = '13px sans-serif';
+      ctx.fillText('Reçu de vente', boxX + boxSize + 20, boxY + 76);
+
+      // Mini-signature B-Ticket, discrète, en haut à droite
+      ctx.fillStyle = encreDouce;
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('via B-Ticket', width - 44, boxY + 20);
+
+      headerBottom = boxY + boxSize + 20;
+    } else {
+      // --- En-tête par défaut à la charte B-Ticket (pas de logo vendeur) ---
+      ctx.fillStyle = encreMarche;
+      drawRoundRect(40, 40, width - 80, 96, 10);
+      ctx.fill();
+
+      ctx.fillStyle = papierTicket;
+      ctx.beginPath();
+      ctx.arc(40, 88, 15, 0, Math.PI * 2);
+      ctx.arc(width - 40, 88, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = papierTicket;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(118, 50);
+      ctx.lineTo(118, 126);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = ambreVif;
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('B', 72, 100);
+      ctx.fillStyle = papierTicket;
+      ctx.fillText('Ticket', 132, 100);
+
+      ctx.fillStyle = encreMarche;
+      ctx.font = 'bold 26px sans-serif';
+      ctx.fillText(user.shop_name.toUpperCase(), 50, 176);
+
+      headerBottom = 176;
+    }
+
+    const saleIdShort = sale ? sale.id : Date.now().toString().slice(-6);
+    const receiptNum = `#BT-${saleIdShort}`;
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = '15px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`N° ${receiptNum}   |   ${dateStr}`, 50, headerBottom + 30);
+
+    ctx.strokeStyle = ligneClair;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(50, headerBottom + 50);
+    ctx.lineTo(width - 50, headerBottom + 50);
+    ctx.stroke();
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = '14px sans-serif';
+    ctx.fillText('CLIENT', 50, headerBottom + 80);
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 19px sans-serif';
+    ctx.fillText(clientName, 50, headerBottom + 104);
+
+    // En-tête de tableau
+    let currentY = headerBottom + 145;
+    ctx.fillStyle = encreDouce;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('ARTICLE', 50, currentY);
+    ctx.textAlign = 'center';
+    ctx.fillText('QTÉ', 370, currentY);
+    ctx.textAlign = 'right';
+    ctx.fillText('P.U', 470, currentY);
+    ctx.fillText('TOTAL', width - 50, currentY);
+    ctx.textAlign = 'left';
+
+    currentY += 14;
+    ctx.strokeStyle = ligneClair;
+    ctx.beginPath();
+    ctx.moveTo(50, currentY);
+    ctx.lineTo(width - 50, currentY);
+    ctx.stroke();
+    currentY += 28;
+
+    items.forEach((item, idx) => {
+      const unitPrice = Math.round(item.total_price / item.qty);
+
+      if (idx % 2 === 1) {
+        ctx.fillStyle = '#F3ECDC';
+        ctx.fillRect(40, currentY - 22, width - 80, itemHeight - 6);
+      }
+
+      ctx.fillStyle = encreMarche;
+      ctx.font = 'bold 16px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.name.substring(0, 26), 50, currentY);
+
+      ctx.font = '15px monospace';
+      ctx.fillStyle = encreDouce;
+      ctx.textAlign = 'center';
+      ctx.fillText(`${item.qty}`, 370, currentY);
+      ctx.textAlign = 'right';
+      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 470, currentY);
+      ctx.fillStyle = encreMarche;
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(`${item.total_price.toLocaleString('fr-FR')}`, width - 50, currentY);
+      ctx.textAlign = 'left';
 
       currentY += itemHeight;
     });
 
-    currentY += 20;
+    currentY += 18;
     ctx.fillStyle = ambreVif;
-    ctx.fillRect(50, currentY, width - 100, 90);
+    drawRoundRect(50, currentY, width - 100, 84, 10);
+    ctx.fill();
 
     ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = 'bold 19px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('TOTAL PAYÉ', 80, currentY + 52);
-
-    ctx.font = 'bold 32px monospace';
+    ctx.fillText('TOTAL PAYÉ', 78, currentY + 49);
+    ctx.font = 'bold 30px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`${totalAmount.toLocaleString('fr-FR')} FCFA`, width - 80, currentY + 52);
-
+    ctx.fillText(`${totalAmount.toLocaleString('fr-FR')} FCFA`, width - 78, currentY + 49);
     ctx.textAlign = 'left';
 
+    currentY += 84 + 36;
     ctx.fillStyle = encreDouce;
-    ctx.font = '14px sans-serif';
-    ctx.fillText('Merci pour votre confiance !', 200, currentY + 140);
-    ctx.font = '12px sans-serif';
-    ctx.fillText('Fait avec B-Ticket • Un produit Brainiacs', 180, currentY + 180);
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Merci pour votre confiance !', width / 2, currentY);
+    ctx.font = '11px sans-serif';
+    ctx.fillText(`Contact : ${user.phone_number}`, width / 2, currentY + 20);
+
+    if (!brainiacsIconImg) {
+      brainiacsIconImg = await loadImage(Buffer.from(BRAINIACS_ICON_B64, 'base64'));
+    }
+    const iconH = 15, iconW = iconH * (brainiacsIconImg.width / brainiacsIconImg.height);
+    ctx.font = '10.5px sans-serif';
+    const signatureText = 'Fait avec B-Ticket · Un produit';
+    const textWidth = ctx.measureText(signatureText).width;
+    const groupWidth = textWidth + 6 + iconW + 58; // 58 ≈ largeur approx. de "Brainiacs"
+    const startX = (width - groupWidth) / 2;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = ambreVif;
+    ctx.fillText(signatureText, startX, currentY + 42);
+    ctx.drawImage(brainiacsIconImg, startX + textWidth + 6, currentY + 42 - iconH + 2, iconW, iconH);
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 10.5px sans-serif';
+    ctx.fillText('Brainiacs', startX + textWidth + 6 + iconW + 4, currentY + 42);
+    ctx.textAlign = 'left';
 
     const imageBuffer = canvas.toBuffer('image/png');
 
@@ -596,7 +714,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 // ROUTER DE CONVERSATION ET GESTION DU BOT
 // ==========================================
 
-async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
+async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageId) {
   const textUpper = text ? text.toUpperCase().trim() : '';
 
   // ------------------------------------------
@@ -668,6 +786,32 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
       }
     }
   }
+    if (text && text.toLowerCase().trim() === 'logo') {
+    await supabase.from('conversations').upsert({ phone_number: phone, step: 'AWAITING_LOGO' });
+    return await envoyerTexte(phone, "📷 Envoie une photo de ton logo (idéalement carrée).", phoneId);
+  }
+    // ⬇️ NOUVEAU : réception d'une image pendant AWAITING_LOGO — à placer juste après le chargement de conv
+  if (imageId && conv && conv.step === 'AWAITING_LOGO') {
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    try {
+      const mediaInfo = await axios.get(`https://graph.facebook.com/v18.0/${imageId}`,
+        { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` } });
+      const mediaRes = await axios.get(mediaInfo.data.url,
+        { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` }, responseType: 'arraybuffer' });
+      const buffer = Buffer.from(mediaRes.data);
+      const logoUrl = await sauvegarderLogo(phone, buffer, mediaInfo.data.mime_type);
+
+      if (logoUrl) {
+        await supabase.from('users').update({ logo_url: logoUrl }).eq('phone_number', phone);
+        return await envoyerTexte(phone, "✅ Logo enregistré ! Il apparaîtra sur tes prochains reçus.", phoneId);
+      }
+      return await envoyerTexte(phone, "❌ Erreur lors de l'enregistrement, réessaie.", phoneId);
+    } catch (err) {
+      console.error("Erreur traitement logo:", err.response?.data || err.message);
+      return await envoyerTexte(phone, "❌ Erreur lors du téléchargement, réessaie.", phoneId);
+    }
+  }
+  // ⬆️ FIN NOUVEAU
 
   // ------------------------------------------
   // CHARGEMENT PROFIL UTILISATEUR + CONVERSATION
@@ -995,6 +1139,7 @@ app.post('/webhook', verifierSignatureMeta, (req, res) => {
 
       let text = null;
       let interactiveId = null;
+      let imageId = null;
 
       if (message.type === 'text') {
         text = message.text.body;
@@ -1004,10 +1149,11 @@ app.post('/webhook', verifierSignatureMeta, (req, res) => {
         } else if (message.interactive.type === 'list_reply') {
           interactiveId = message.interactive.list_reply.id;
         }
+      } else if (message.type === 'image') {
+        imageId = message.image.id;
       }
 
-      // Exécution asynchrone sécurisée
-      traiterMessageEntrant(phone, text, interactiveId, phoneId).catch(err => {
+      traiterMessageEntrant(phone, text, interactiveId, phoneId, imageId).catch(err => {
         console.error("❌ Erreur traitement message entrant:", err);
       });
     }
