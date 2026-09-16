@@ -231,19 +231,13 @@ async function envoyerBoutonsCart(phone, items, phoneId) {
 
 // 3. Ouvrir le catalogue interactif du vendeur
 async function ouvrirCatalogueVendeur(phone, user, phoneId) {
-  const { data: products } = await supabase.from('products').select('*').eq('user_phone', phone).limit(10);
+  const { data: products } = await supabase.from('products').select('*').eq('user_phone', phone).limit(9);
 
-  if (!products || products.length === 0) {
-    const noProdMsg = t(user, 'welcome') + "\nAucun produit configuré dans votre catalogue.\n\n" +
-      "Vous pouvez directement utiliser le *Mode Express* en envoyant :\n" +
-      "`Nom Produit, Quantité, Prix Total`";
-    return await envoyerTexte(phone, noProdMsg, phoneId);
-  }
-
-  const rows = products.map(p => ({
+  const rows = [{ id: 'catalog_add', title: '➕ Ajouter un article', description: 'Nouveau produit ou service' }];
+  (products || []).forEach(p => rows.push({
     id: `prod_${p.id}`,
     title: p.name.substring(0, 24),
-    description: `${p.price ? p.price.toLocaleString('fr-FR') + ' FCFA' : 'Prix flexible'}`
+    description: p.price ? `${p.price.toLocaleString('fr-FR')} FCFA` : 'Prix flexible'
   }));
 
   try {
@@ -777,6 +771,10 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId) {
         return await afficherRecuEbauche(phone, user, items, 'Client Comptoir', phoneId);
       }
     }
+    if (interactiveId === 'catalog_add') {
+      await supabase.from('conversations').upsert({ phone_number: phone, step: 'ADD_PRODUCT_NAME' });
+      return await envoyerTexte(phone, "Nom du nouvel article ?", phoneId);
+    }
 
     if (interactiveId === 'btn_add_more') {
       await supabase.from('conversations').upsert({ phone_number: phone, step: 'BUILDING_CART', data: conv ? conv.data : { items: [] } });
@@ -848,6 +846,60 @@ if (interactiveId.startsWith('prod_')) {
     return;
   }
   // ⬆️ FIN NOUVEAU
+   // ⬇️ NOUVEAU : réception de la quantité / prix négocié
+  if (conv && conv.step === 'NEGOTIATE_PRICE' && text) {
+    const prod = conv.data.current_product;
+    let qty, finalPrice;
+
+    if (text.includes(',')) {
+      const parts = text.split(',');
+      qty = parseInt(parts[0].replace(/[^0-9]/g, ''), 10) || 1;
+      finalPrice = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
+    } else {
+      qty = parseInt(text.replace(/[^0-9]/g, ''), 10) || 1;
+      finalPrice = prod.price * qty;
+    }
+
+    if (!finalPrice || finalPrice <= 0) {
+      return await envoyerTexte(phone, "Montant invalide. Exemple : `2, 4500` ou juste `2`.", phoneId);
+    }
+
+    const items = [...(conv.data.items || []), { name: prod.name, qty, total_price: finalPrice }];
+    await supabase.from('conversations').update({ step: 'CART_ACTIVE', data: { items } }).eq('phone_number', phone);
+    return await envoyerBoutonsCart(phone, items, phoneId);
+  }
+    // ------------------------------------------
+  // SAISIE DU NOM DU CLIENT DEPUIS LE MODE CLASSIQUE
+  // ------------------------------------------
+  if (conv && conv.step === 'ASK_CLIENT_NAME' && text) {
+    const items = conv.data.items;
+    return await afficherRecuEbauche(phone, user, items, text.trim(), phoneId);
+  }
+    // Réception de la preuve de recharge
+  if (conv && conv.step === 'AWAITING_RECHARGE_PROOF' && text) {
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    await envoyerTexte(ADMIN_PHONE,
+      `*Demande de recharge*\n\nVendeur : ${user.shop_name} (${phone})\nMontant annoncé : ${text.trim()} FCFA\n\nValider : RECHARGE ${phone} <quota>`,
+      phoneId
+    );
+    return await envoyerTexte(phone, "✅ Demande transmise. Vous recevrez une confirmation une fois le paiement vérifié.", phoneId);
+  }
+  // 4. Nouveaux ADD_PRODUCT_NAME / ADD_PRODUCT_PRICE
+    if (conv && conv.step === 'ADD_PRODUCT_NAME' && text) {
+    await supabase.from('conversations').update({ step: 'ADD_PRODUCT_PRICE', data: { name: text.trim() } }).eq('phone_number', phone);
+    return await envoyerTexte(phone, `Prix pour *${text.trim()}* ?`, phoneId);
+  }
+
+  if (conv && conv.step === 'ADD_PRODUCT_PRICE' && text) {
+    const price = parseInt(text.replace(/[^0-9]/g, ''), 10);
+    if (!price || price <= 0) {
+      return await envoyerTexte(phone, "Prix invalide, réessaie (chiffres uniquement).", phoneId);
+    }
+    await supabase.from('products').insert({ user_phone: phone, name: conv.data.name, price });
+    await supabase.from('conversations').delete().eq('phone_number', phone);
+    return await envoyerTexte(phone, `✅ *${conv.data.name}* ajouté à ${price.toLocaleString('fr-FR')} FCFA.`, phoneId);
+  }
+
   // ------------------------------------------
   // GESTION DU MODE EXPRESS MULTI-ARTICLES (SÉPARATEUR VIRGULE)
   // ------------------------------------------
@@ -885,45 +937,6 @@ if (interactiveId.startsWith('prod_')) {
       await autoSaveProducts(user.phone_number, items);
       return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
     }
-  }
-    // ⬇️ NOUVEAU : réception de la quantité / prix négocié
-  if (conv && conv.step === 'NEGOTIATE_PRICE' && text) {
-    const prod = conv.data.current_product;
-    let qty, finalPrice;
-
-    if (text.includes(',')) {
-      const parts = text.split(',');
-      qty = parseInt(parts[0].replace(/[^0-9]/g, ''), 10) || 1;
-      finalPrice = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
-    } else {
-      qty = parseInt(text.replace(/[^0-9]/g, ''), 10) || 1;
-      finalPrice = prod.price * qty;
-    }
-
-    if (!finalPrice || finalPrice <= 0) {
-      return await envoyerTexte(phone, "Montant invalide. Exemple : `2, 4500` ou juste `2`.", phoneId);
-    }
-
-    const items = [...(conv.data.items || []), { name: prod.name, qty, total_price: finalPrice }];
-    await supabase.from('conversations').update({ step: 'CART_ACTIVE', data: { items } }).eq('phone_number', phone);
-    return await envoyerBoutonsCart(phone, items, phoneId);
-  }
-
-  // ------------------------------------------
-  // SAISIE DU NOM DU CLIENT DEPUIS LE MODE CLASSIQUE
-  // ------------------------------------------
-  if (conv && conv.step === 'ASK_CLIENT_NAME' && text) {
-    const items = conv.data.items;
-    return await afficherRecuEbauche(phone, user, items, text.trim(), phoneId);
-  }
-    // Réception de la preuve de recharge
-  if (conv && conv.step === 'AWAITING_RECHARGE_PROOF' && text) {
-    await supabase.from('conversations').delete().eq('phone_number', phone);
-    await envoyerTexte(ADMIN_PHONE,
-      `*Demande de recharge*\n\nVendeur : ${user.shop_name} (${phone})\nMontant annoncé : ${text.trim()} FCFA\n\nValider : RECHARGE ${phone} <quota>`,
-      phoneId
-    );
-    return await envoyerTexte(phone, "✅ Demande transmise. Vous recevrez une confirmation une fois le paiement vérifié.", phoneId);
   }
 
   // MENU PAR DÉFAUT SI AUCUNE COMMANDE N'EST RECONNUE
