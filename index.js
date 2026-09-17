@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const FormData = require('form-data');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { createClient } = require('@supabase/supabase-js');
-const BRAINIACS_ICON_B64 = "PASTE_LA_CHAINE_ICI";
+const BRAINIACS_ICON_B64 = "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";
 let brainiacsIconImg = null; // mis en cache après le premier chargement
 const TARIF_REF_FCFA = 35;        // prix moyen pondéré par reçu, sert à convertir un montant en crédits
 const QUOTA_DEFAUT_APPROBATION = 100;
@@ -715,10 +715,17 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     ctx.font = '11px sans-serif';
     ctx.fillText(`Contact : ${user.phone_number}`, width / 2, currentY + 20);
 
-    if (!brainiacsIconImg) {
-      brainiacsIconImg = await loadImage(Buffer.from(BRAINIACS_ICON_B64, 'base64'));
+    let iconH = 0, iconW = 0;
+    try {
+      if (!brainiacsIconImg) {
+        brainiacsIconImg = await loadImage(Buffer.from(BRAINIACS_ICON_B64, 'base64'));
+      }
+      iconH = 15;
+      iconW = iconH * (brainiacsIconImg.width / brainiacsIconImg.height);
+    } catch (e) {
+      console.error("Pictogramme Brainiacs indisponible, signature sans icône:", e.message);
+      brainiacsIconImg = null;
     }
-    const iconH = 15, iconW = iconH * (brainiacsIconImg.width / brainiacsIconImg.height);
     ctx.font = '10.5px sans-serif';
     const signatureText = 'Fait avec B-Ticket · Un produit';
     const textWidth = ctx.measureText(signatureText).width;
@@ -728,6 +735,9 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     ctx.textAlign = 'left';
     ctx.fillStyle = ambreVif;
     ctx.fillText(signatureText, startX, currentY + 42);
+    if (brainiacsIconImg) {
+      ctx.drawImage(brainiacsIconImg, startX + textWidth + 6, currentY + 42 - iconH + 2, iconW, iconH);
+    }
     ctx.drawImage(brainiacsIconImg, startX + textWidth + 6, currentY + 42 - iconH + 2, iconW, iconH);
     ctx.fillStyle = encreMarche;
     ctx.font = 'bold 10.5px sans-serif';
