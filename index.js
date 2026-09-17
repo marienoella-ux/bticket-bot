@@ -6,6 +6,8 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { createClient } = require('@supabase/supabase-js');
 const BRAINIACS_ICON_B64 = "PASTE_LA_CHAINE_ICI";
 let brainiacsIconImg = null; // mis en cache après le premier chargement
+const TARIF_REF_FCFA = 35;        // prix moyen pondéré par reçu, sert à convertir un montant en crédits
+const QUOTA_DEFAUT_APPROBATION = 100;
 
 const app = express();
 
@@ -408,6 +410,56 @@ async function autoSaveProducts(userId, items) {
     }
   }
 }
+// LA LISTE EN ATTENTE
+async function envoyerListeAttente(phone, phoneId) {
+  const { data: pendingUsers } = await supabase.from('users').select('*').eq('is_approved', false).limit(5);
+  const { data: pendingRecharges } = await supabase.from('recharge_requests').select('*').eq('status', 'pending').limit(5);
+
+  if ((!pendingUsers || pendingUsers.length === 0) && (!pendingRecharges || pendingRecharges.length === 0)) {
+    return await envoyerTexte(phone, "✅ Rien en attente.", phoneId);
+  }
+
+  const sections = [];
+  if (pendingUsers && pendingUsers.length > 0) {
+    sections.push({
+      title: 'Inscriptions',
+      rows: pendingUsers.map(u => ({
+        id: `approve_${u.phone_number}`,
+        title: u.shop_name.substring(0, 24),
+        description: `${u.first_name || ''} · ${u.phone_number}`
+      }))
+    });
+  }
+  if (pendingRecharges && pendingRecharges.length > 0) {
+    sections.push({
+      title: 'Recharges',
+      rows: pendingRecharges.map(r => ({
+        id: `recharge_${r.id}`,
+        title: `${r.amount.toLocaleString('fr-FR')} FCFA`,
+        description: `${r.payer_name || 'Sans nom'} · ${r.phone_number}`
+      }))
+    });
+  }
+
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp', recipient_type: 'individual', to: phone,
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          header: { type: 'text', text: '⏳ EN ATTENTE' },
+          body: { text: 'Sélectionnez un élément à traiter :' },
+          action: { button: 'Voir la liste', sections }
+        }
+      },
+      { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
+    );
+  } catch (err) {
+    console.error("Erreur envoyerListeAttente:", err.response ? err.response.data : err.message);
+  }
+}
 
 // 8. GENERATION ET ENVOI DE L'IMAGE REÇU
 async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
@@ -721,6 +773,59 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
   // MODULE ADMINISTRATEUR
   // ------------------------------------------
   if (phone === ADMIN_PHONE) {
+     if (interactiveId && interactiveId.startsWith('approve_')) {
+      const targetPhone = interactiveId.replace('approve_', '');
+      await supabase.from('users').update({ is_approved: true, receipt_quota: QUOTA_DEFAUT_APPROBATION }).eq('phone_number', targetPhone);
+      const { data: targetUser } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
+      if (targetUser) {
+        await envoyerTexte(targetPhone, t(targetUser, 'congrats_approved').replace('{quota}', QUOTA_DEFAUT_APPROBATION), phoneId);
+      }
+      return await envoyerTexte(phone, `✅ ${targetPhone} validé avec ${QUOTA_DEFAUT_APPROBATION} reçus.`, phoneId);
+    }
+
+    if (interactiveId && interactiveId.startsWith('recharge_')) {
+      const reqId = interactiveId.replace('recharge_', '');
+      const { data: reqData } = await supabase.from('recharge_requests').select('*').eq('id', reqId).single();
+      if (!reqData || reqData.status !== 'pending') {
+        return await envoyerTexte(phone, "⚠️ Demande introuvable ou déjà traitée.", phoneId);
+      }
+      const creditsCalcules = Math.round(reqData.amount / TARIF_REF_FCFA);
+
+      await supabase.from('conversations').upsert({
+        phone_number: phone,
+        step: 'CONFIRM_RECHARGE',
+        data: { request_id: reqData.id, target_phone: reqData.phone_number, credits: creditsCalcules }
+      });
+
+      return await axios.post(
+        `https://graph.facebook.com/v18.0/${phoneId}/messages`,
+        {
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: phone,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: { text: `💰 ${reqData.payer_name || 'Sans nom'} — ${reqData.amount.toLocaleString('fr-FR')} FCFA\nVendeur : ${reqData.phone_number}\n\n≈ *${creditsCalcules} reçus* (à ${TARIF_REF_FCFA} FCFA/reçu)` },
+            action: { buttons: [{ type: 'reply', reply: { id: 'confirm_recharge', title: `✅ Créditer ${creditsCalcules}` } }] }
+          }
+        },
+        { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (interactiveId === 'confirm_recharge') {
+      const { data: adminConv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
+      if (adminConv && adminConv.step === 'CONFIRM_RECHARGE') {
+        const { request_id, target_phone, credits } = adminConv.data;
+        await supabase.from('recharge_requests').update({ status: 'done' }).eq('id', request_id);
+        const { data: u } = await supabase.from('users').select('*').eq('phone_number', target_phone).single();
+        const newQ = (u.receipt_quota || 0) + credits;
+        await supabase.from('users').update({ receipt_quota: newQ }).eq('phone_number', target_phone);
+        await supabase.from('conversations').delete().eq('phone_number', phone);
+
+        await envoyerTexte(target_phone, t(u, 'recharge_success').replace('{quota}', credits).replace('{total}', newQ), phoneId);
+        return await envoyerTexte(phone, `✅ Recharge confirmée. Nouveau solde : ${newQ}.`, phoneId);
+      }
+    }
     if (textUpper === 'ADMIN' || textUpper === 'DASHBOARD') {
       const { count: totalUsers } = await supabase.from('users').select('*', { count: 'exact', head: true });
       const { count: pendingUsers } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_approved', false);
@@ -741,16 +846,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
     }
 
     if (textUpper === 'ATTENTE') {
-      const { data: pending } = await supabase.from('users').select('*').eq('is_approved', false);
-      if (!pending || pending.length === 0) {
-        return await envoyerTexte(phone, "✅ Aucun compte en attente de validation.", phoneId);
-      }
-      let listMsg = "*COMPTES EN ATTENTE :*\n\n";
-      pending.forEach(u => {
-        listMsg += `• Nom: ${u.shop_name} | Num: ${u.phone_number}\n`;
-      });
-      listMsg += "\nPour valider : `VALIDER <numéro> <quota>`";
-      return await envoyerTexte(phone, listMsg, phoneId);
+      return await envoyerListeAttente(phone, phoneId);
     }
 
     if (textUpper.startsWith('VALIDER')) {
@@ -856,7 +952,7 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
       const tLower = text.trim().toLowerCase();
       if (tLower === 'fin' || tLower === 'passer') {
         await supabase.from('conversations').delete().eq('phone_number', phone);
-        await envoyerTexte(ADMIN_PHONE,
+        await envoyerTexte(phone,
           `🔔 Nouvelle inscription : ${conv.data.first_name} — boutique *${conv.data.shop_name}* (${phone})\nValider : VALIDER ${phone} 100`,
           phoneId);
         return await envoyerTexte(phone,
@@ -982,8 +1078,8 @@ if (interactiveId.startsWith('prod_')) {
     await envoyerTexte(phone,
       `💳 *Recharger votre compte*\n\n` +
       `1. Effectuez le paiement au code marchand Orange Money : *[ton code]*\n` +
-      `2. Répondez ici avec le *montant payé* pour confirmer votre demande\n\n` +
-      `Un administrateur validera votre recharge sous peu.`,
+      `2. Répondez avec : *Nom du compte payeur, Montant* (ex: Jean Mballa, 5000)\n\n` +
+      `Votre demande sera traitée sous peu.`,
       phoneId
     );
     await supabase.from('conversations').upsert({ phone_number: phone, step: 'AWAITING_RECHARGE_PROOF' });
@@ -1021,13 +1117,20 @@ if (interactiveId.startsWith('prod_')) {
   }
     // Réception de la preuve de recharge
   if (conv && conv.step === 'AWAITING_RECHARGE_PROOF' && text) {
+    const parts = text.split(',').map(p => p.trim());
+    const payerName = parts.length >= 2 ? parts[0] : null;
+    const amountRaw = parts.length >= 2 ? parts[1] : parts[0];
+    const amount = parseInt(amountRaw.replace(/[^0-9]/g, ''), 10);
+
+    if (!amount || amount <= 0) {
+      return await envoyerTexte(phone, "Format non reconnu. Envoie : *Nom du compte, Montant* (ex: Jean Mballa, 5000)", phoneId);
+    }
+
     await supabase.from('conversations').delete().eq('phone_number', phone);
-    await envoyerTexte(ADMIN_PHONE,
-      `*Demande de recharge*\n\nVendeur : ${user.shop_name} (${phone})\nMontant annoncé : ${text.trim()} FCFA\n\nValider : RECHARGE ${phone} <quota>`,
-      phoneId
-    );
-    return await envoyerTexte(phone, "✅ Demande transmise. Vous recevrez une confirmation une fois le paiement vérifié.", phoneId);
+    await supabase.from('recharge_requests').insert({ phone_number: phone, payer_name: payerName, amount });
+    return await envoyerTexte(phone, "✅ Demande enregistrée. Elle sera traitée sous peu.", phoneId);
   }
+  
   // 4. Nouveaux ADD_PRODUCT_NAME / ADD_PRODUCT_PRICE
     if (conv && conv.step === 'ADD_PRODUCT_NAME' && text) {
     await supabase.from('conversations').update({ step: 'ADD_PRODUCT_PRICE', data: { name: text.trim() } }).eq('phone_number', phone);
