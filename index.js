@@ -276,7 +276,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
 }
 
 // 4. Demander le nom du client
-async function envoyerDemandeClient(phone, user, phoneId) {
+async function envoyerDemandeClient(phone, user, conv, phoneId) {
   const { data: recentSales } = await supabase
     .from('sales')
     .select('client_name')
@@ -372,7 +372,26 @@ async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
   }
 }
 
-// 6. Uploader l'image vers Meta WhatsApp Media
+// UPLOAD MEDIA WHATSAPP
+async function uploaderMediaWhatsApp(imageBuffer, mimeType, phoneId) {
+  try {
+    const form = new FormData();
+    form.append('file', imageBuffer, { filename: 'recu.png', contentType: mimeType });
+    form.append('type', 'image');
+    form.append('messaging_product', 'whatsapp');
+
+    const res = await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneId}/media`,
+      form,
+      { headers: { ...form.getHeaders(), Authorization: `Bearer ${META_ACCESS_TOKEN}` } }
+    );
+    return res;
+  } catch (err) {
+    console.error("Erreur uploaderMediaWhatsApp:", err.response ? err.response.data : err.message);
+    return null;
+  }
+}
+// 6. SAUVEGARDER LOGO
 async function sauvegarderLogo(phone, imageBuffer, mimeType) {
   const ext = mimeType && mimeType.includes('png') ? 'png' : 'jpg';
   const filePath = `${phone}.${ext}`;
@@ -886,7 +905,14 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
     await supabase.from('conversations').upsert({ phone_number: phone, step: 'AWAITING_LOGO' });
     return await envoyerTexte(phone, "📷 Envoie une photo de ton logo (idéalement carrée).", phoneId);
   }
-    // ⬇️ NOUVEAU : réception d'une image pendant AWAITING_LOGO — à placer juste après le chargement de conv
+
+  // ------------------------------------------
+  // CHARGEMENT PROFIL UTILISATEUR + CONVERSATION
+  // ------------------------------------------
+  let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
+  const { data: conv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
+
+  // ⬇️ NOUVEAU : réception d'une image pendant AWAITING_LOGO — à placer juste après le chargement de conv
   if (imageId && conv && conv.step === 'AWAITING_LOGO') {
     await supabase.from('conversations').delete().eq('phone_number', phone);
     try {
@@ -908,12 +934,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
     }
   }
   // ⬆️ FIN NOUVEAU
-
-  // ------------------------------------------
-  // CHARGEMENT PROFIL UTILISATEUR + CONVERSATION
-  // ------------------------------------------
-  let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
-  const { data: conv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
 
   if (!user) {
     if (!conv) {
@@ -952,9 +972,6 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
       const tLower = text.trim().toLowerCase();
       if (tLower === 'fin' || tLower === 'passer') {
         await supabase.from('conversations').delete().eq('phone_number', phone);
-        await envoyerTexte(phone,
-          `🔔 Nouvelle inscription : ${conv.data.first_name} — boutique *${conv.data.shop_name}* (${phone})\nValider : VALIDER ${phone} 100`,
-          phoneId);
         return await envoyerTexte(phone,
           tLower === 'fin' ? "✅ Catalogue enregistré ! Ton compte est en attente de validation."
                             : "D'accord, tu pourras configurer ton catalogue plus tard. Ton compte est en attente de validation.",
