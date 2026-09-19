@@ -567,9 +567,12 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const width = 480;
     const contentX = 32;
     const contentRight = width - 32;
-    const baseHeight = 630;
     const itemHeight = 38;
-    const height = baseHeight + (items.length * itemHeight);
+
+    // Hauteur d'en-tête fixe selon présence ou non d'un logo
+    const headerConstant = logoImg ? 122 : 134;
+    // Hauteur totale calculée à partir du contenu réel — plus jamais d'espace mort
+    const height = headerConstant + 320 + (itemHeight * items.length);
 
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
@@ -616,7 +619,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     if (logoImg) {
       // --- En-tête avec logo du commerçant ---
-      const boxSize = 64;
+      const boxSize = 80;
       ctx.fillStyle = '#FFFFFF';
       drawRoundRect(contentX, 28, boxSize, boxSize, 10);
       ctx.fill();
@@ -633,13 +636,13 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
       const textX = contentX + boxSize + 16;
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 22px Georgia, serif';
+      ctx.font = 'bold 24px Georgia, serif';
       ctx.textAlign = 'left';
-      ctx.fillText(user.shop_name.toUpperCase(), textX, 55);
+      ctx.fillText(user.shop_name.toUpperCase(), textX, 58);
 
       ctx.fillStyle = encreDouce;
       ctx.font = '12px sans-serif';
-      ctx.fillText('Reçu de vente', textX, 75);
+      ctx.fillText('Reçu de vente', textX, 80);
 
       ctx.fillStyle = grisVia;
       ctx.font = '10px sans-serif';
@@ -784,8 +787,14 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Footer — signature discrète, sans numéro de téléphone
-    currentY += 24;
+    // Footer — deux lignes, meilleur contraste
+    currentY += 20;
+    ctx.fillStyle = encreDouce;
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Fait avec B-Ticket', width / 2, currentY);
+
+    currentY += 20;
     let iconOk = false;
     try {
       if (!brainiacsIconImg) {
@@ -797,16 +806,28 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       brainiacsIconImg = null;
     }
 
-    const iconH = 11;
+    const iconH = 13;
     const iconW = iconOk ? iconH * (brainiacsIconImg.width / brainiacsIconImg.height) : 0;
-    ctx.font = '9.5px sans-serif';
-    const part1 = 'Fait avec B-Ticket · un produit';
-    const w1 = ctx.measureText(part1).width;
-    ctx.font = 'bold 9.5px sans-serif';
-    const w2 = ctx.measureText('Brainiacs').width;
-    const groupWidth = w1 + 5 + (iconOk ? iconW + 4 : 0) + w2;
+    ctx.font = '10.5px sans-serif';
+    const prefixText = 'un produit';
+    const wPrefix = ctx.measureText(prefixText).width;
+    ctx.font = 'bold 10.5px sans-serif';
+    const wBrainiacs = ctx.measureText('Brainiacs').width;
+    const groupWidth = wPrefix + 6 + (iconOk ? iconW + 5 : 0) + wBrainiacs;
     const startX = (width - groupWidth) / 2;
 
+    ctx.textAlign = 'left';
+    ctx.fillStyle = encreDouce;
+    ctx.font = '10.5px sans-serif';
+    ctx.fillText(prefixText, startX, currentY);
+    let cursorX = startX + wPrefix + 6;
+    if (iconOk) {
+      ctx.drawImage(brainiacsIconImg, cursorX, currentY - iconH + 2, iconW, iconH);
+      cursorX += iconW + 5;
+    }
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 10.5px sans-serif';
+    ctx.fillText('Brainiacs', cursorX, currentY);
     ctx.textAlign = 'left';
     ctx.fillStyle = ambreVif;
     ctx.font = '9.5px sans-serif';
