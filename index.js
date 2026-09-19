@@ -7,7 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 const BRAINIACS_ICON_B64 = "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";
 let brainiacsIconImg = null; // mis en cache après le premier chargement
 const TARIF_REF_FCFA = 35;        // prix moyen pondéré par reçu, sert à convertir un montant en crédits
-const QUOTA_DEFAUT_APPROBATION = 100;
+const QUOTA_DEFAUT_APPROBATION = 15;
 
 const app = express();
 
@@ -273,6 +273,55 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
   } catch (err) {
     console.error("Erreur ouvrirCatalogueVendeur:", err.response ? err.response.data : err.message);
   }
+}
+
+async function previsualiserCreditsMensuels() {
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const { data: users } = await supabase
+    .from('users')
+    .select('phone_number')
+    .eq('is_approved', true)
+    .or(`last_free_credit_month.is.null,last_free_credit_month.neq.${currentMonth}`);
+  return { currentMonth, count: users ? users.length : 0, phones: users ? users.map(u => u.phone_number) : [] };
+}
+
+async function executerCreditsMensuels(currentMonth, phones) {
+  for (const phone of phones) {
+    const { data: u } = await supabase.from('users').select('receipt_quota').eq('phone_number', phone).single();
+    const newQuota = (u?.receipt_quota || 0) + 15;
+    await supabase.from('users').update({ receipt_quota: newQuota, last_free_credit_month: currentMonth }).eq('phone_number', phone);
+  }
+}
+
+// Crédit mensuel
+async function distribuerCreditsMensuels() {
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('phone_number, receipt_quota, last_free_credit_month')
+    .eq('is_approved', true)
+    .or(`last_free_credit_month.is.null,last_free_credit_month.neq.${currentMonth}`);
+
+  if (error) {
+    console.error("Erreur lecture utilisateurs pour crédit mensuel:", error);
+    return;
+  }
+  if (!users || users.length === 0) {
+    console.log("Aucun vendeur à créditer pour", currentMonth);
+    return;
+  }
+
+  for (const u of users) {
+    const newQuota = (u.receipt_quota || 0) + 15;
+    await supabase.from('users').update({
+      receipt_quota: newQuota,
+      last_free_credit_month: currentMonth
+    }).eq('phone_number', u.phone_number);
+  }
+  console.log(`✅ Crédit mensuel (+15) distribué à ${users.length} vendeur(s) pour ${currentMonth}`);
 }
 
 // 4. Demander le nom du client
@@ -802,9 +851,15 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
   // MODULE ADMINISTRATEUR
   // ------------------------------------------
   if (phone === ADMIN_PHONE) {
-     if (interactiveId && interactiveId.startsWith('approve_')) {
-      const targetPhone = interactiveId.replace('approve_', '');
-      await supabase.from('users').update({ is_approved: true, receipt_quota: QUOTA_DEFAUT_APPROBATION }).eq('phone_number', targetPhone);
+if (interactiveId && interactiveId.startsWith('approve_')) {
+  const targetPhone = interactiveId.replace('approve_', '');
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  await supabase.from('users').update({
+    is_approved: true,
+    receipt_quota: QUOTA_DEFAUT_APPROBATION,
+    last_free_credit_month: currentMonth
+  }).eq('phone_number', targetPhone);
       const { data: targetUser } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
       if (targetUser) {
         await envoyerTexte(targetPhone, t(targetUser, 'congrats_approved').replace('{quota}', QUOTA_DEFAUT_APPROBATION), phoneId);
@@ -840,6 +895,15 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
         { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
       );
     }
+    if (interactiveId === 'confirm_credits_mensuels') {
+      const { data: adminConv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
+      if (adminConv && adminConv.step === 'CONFIRM_CREDITS_MENSUELS') {
+        const { currentMonth, phones } = adminConv.data;
+        await executerCreditsMensuels(currentMonth, phones);
+        await supabase.from('conversations').delete().eq('phone_number', phone);
+        return await envoyerTexte(phone, `✅ ${phones.length} vendeur(s) crédités pour ${currentMonth}.`, phoneId);
+      }
+    }
 
     if (interactiveId === 'confirm_recharge') {
       const { data: adminConv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
@@ -868,11 +932,37 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
         `*Articles au catalogue :* ${totalProducts || 0}\n\n` +
         `*COMMANDES DISPONIBLES :*\n` +
         `• *ATTENTE* : Voir les comptes non approuvés.\n` +
+        `• *CREDITS* : Distribuer les 15 reçus gratuits du mois.\n` + 
         `• *VALIDER <numéro> <quota>* : Approuver un compte.\n` +
         `• *RECHARGE <numéro> <quota>* : Ajouter des reçus.`;
 
       return await envoyerTexte(phone, adminMsg, phoneId);
     }
+
+    if (textUpper === 'CREDITS') {
+  const { currentMonth, count, phones } = await previsualiserCreditsMensuels();
+  if (count === 0) {
+    return await envoyerTexte(phone, `✅ Tout le monde a déjà été crédité pour ${currentMonth}.`, phoneId);
+  }
+  await supabase.from('conversations').upsert({
+    phone_number: phone,
+    step: 'CONFIRM_CREDITS_MENSUELS',
+    data: { currentMonth, phones }
+  });
+  return await axios.post(
+    `https://graph.facebook.com/v18.0/${phoneId}/messages`,
+    {
+      messaging_product: 'whatsapp', recipient_type: 'individual', to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: `📅 Crédit mensuel gratuit (${currentMonth})\n\n${count} vendeur(s) vont recevoir +15 reçus.` },
+        action: { buttons: [{ type: 'reply', reply: { id: 'confirm_credits_mensuels', title: `✅ Créditer les ${count}` } }] }
+      }
+    },
+    { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
+  );
+}
 
     if (textUpper === 'ATTENTE') {
       return await envoyerListeAttente(phone, phoneId);
@@ -960,16 +1050,10 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
     }
 
     if (conv.step === 'ONBOARDING_SHOP_NAME') {
-      await supabase.from('users').insert([{
-        phone_number: phone,
-        first_name: conv.data.first_name,
-        shop_name: text.trim(),
-        is_approved: false,
-        receipt_quota: 0
-      }]);
+      // ⬇️ Plus d'insertion en base ici — juste stocké dans la conversation
       await supabase.from('conversations').update({
         step: 'ONBOARDING_CATALOG',
-        data: { ...conv.data, shop_name: text.trim() }
+        data: { ...conv.data, shop_name: text.trim(), catalog_items: [] }
       }).eq('phone_number', phone);
       return await envoyerTexte(phone,
         `Parfait ! Une dernière étape : ajoute quelques articles à ton catalogue.\n\n` +
@@ -981,25 +1065,68 @@ async function traiterMessageEntrant(phone, text, interactiveId, phoneId, imageI
     if (conv.step === 'ONBOARDING_CATALOG') {
       const tLower = text.trim().toLowerCase();
       if (tLower === 'fin' || tLower === 'passer') {
-        await supabase.from('conversations').delete().eq('phone_number', phone);
+        await supabase.from('conversations').update({ step: 'ONBOARDING_LOGO', data: conv.data }).eq('phone_number', phone);
         return await envoyerTexte(phone,
-          tLower === 'fin' ? "✅ Catalogue enregistré ! Ton compte est en attente de validation."
-                            : "D'accord, tu pourras configurer ton catalogue plus tard. Ton compte est en attente de validation.",
+          "📷 Dernière étape (optionnelle) : envoie une photo de ton logo, idéalement carrée.\n\nOu écris *PASSER* pour l'ajouter plus tard.",
           phoneId);
       }
 
       const parts = text.split(',').map(p => p.trim());
       const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
       if (parts.length === 2 && parts[0] && price > 0) {
-        await supabase.from('products').insert({ user_phone: phone, name: parts[0], price });
+        const items = [...(conv.data.catalog_items || []), { name: parts[0], price }];
+        await supabase.from('conversations').update({ data: { ...conv.data, catalog_items: items } }).eq('phone_number', phone);
         return await envoyerTexte(phone, `✅ *${parts[0]}* ajouté (${price.toLocaleString('fr-FR')} FCFA). Un autre ? Sinon écris *FIN*.`, phoneId);
       }
       return await envoyerTexte(phone, "Format non reconnu. Exemple : *Coupe, 1500* — ou écris *FIN*.", phoneId);
     }
 
+    if (conv.step === 'ONBOARDING_LOGO') {
+      let logoUrl = null;
+
+      if (imageId) {
+        try {
+          const mediaInfo = await axios.get(`https://graph.facebook.com/v18.0/${imageId}`,
+            { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` } });
+          const mediaRes = await axios.get(mediaInfo.data.url,
+            { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` }, responseType: 'arraybuffer' });
+          logoUrl = await sauvegarderLogo(phone, Buffer.from(mediaRes.data), mediaInfo.data.mime_type);
+        } catch (err) {
+          console.error("Erreur logo onboarding:", err.response?.data || err.message);
+        }
+      } else if (!text || text.trim().toLowerCase() !== 'passer') {
+        return await envoyerTexte(phone, "Envoie une photo, ou écris *PASSER*.", phoneId);
+      }
+
+      // ⬇️ Finalisation : tout s'écrit d'un coup, maintenant que l'inscription est complète
+      await supabase.from('users').insert([{
+        phone_number: phone,
+        first_name: conv.data.first_name,
+        shop_name: conv.data.shop_name,
+        logo_url: logoUrl,
+        is_approved: false,
+        receipt_quota: 0
+      }]);
+
+      if (conv.data.catalog_items && conv.data.catalog_items.length > 0) {
+        const rows = conv.data.catalog_items.map(it => ({ user_phone: phone, name: it.name, price: it.price }));
+        await supabase.from('products').insert(rows);
+      }
+
+      await supabase.from('conversations').delete().eq('phone_number', phone);
+      return await envoyerTexte(phone,
+        logoUrl ? "✅ Inscription complète, logo enregistré ! Ton compte est en attente de validation."
+                : "✅ Inscription complète ! Ton compte est en attente de validation.",
+        phoneId);
+    }
+
     // Cas de repli : conv existe mais avec un step inconnu — on relance proprement
     await supabase.from('conversations').delete().eq('phone_number', phone);
     return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nQuel est votre *prénom* ?", phoneId);
+  }
+
+  if (!user.is_approved) {
+    return await envoyerTexte(phone, "⏳ Votre compte est en attente d'approbation par l'administrateur. Merci de patienter !", phoneId);
   }
 
   if (!user.is_approved) {
