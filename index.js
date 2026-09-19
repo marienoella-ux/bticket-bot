@@ -64,14 +64,14 @@ const translations = {
     btn_help: "❓ Help",
     welcome_new: "Welcome to B-Ticket Express {name}!\n\nYour account is being activated by our team. You will receive a notification shortly.",
     congrats_approved: "🎉 Congratulations {name}! Your B-Ticket account has been approved with a quota of {quota} receipts.",
-    recharge_success: "{name} Your account has been topped up with {quota} receipts! New balance: {total} receipts."
+    recharge_success: "{name} Your account has been topped up with {quota} receipts! New balance: {total} receipts.",
     // In translations.fr, next to congrats_approved
     guide_usage: "📘 *How to Use B-Ticket*\n\n" +
       "⚡ *Quick Sale*: `Product, Quantity, Price` (e.g., Bag of rice, 2, 30000)\n\n" +
       "📋 *MENU* — catalog, sales history, help\n" +
       "🖼️ *LOGO* — add your logo to your receipts\n" +
       "💳 *TOP-UP* — top up your receipt balance\n\n" +
-      "🎁 You receive 15 free receipts on the 1st of every month, in addition to your balance.",
+      "🎁 You receive 15 free receipts on the 1st of every month, in addition to your balance."
   }
 };
 
