@@ -47,6 +47,13 @@ const translations = {
     welcome_new: "Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
     congrats_approved: "🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de {quota} reçus.",
     recharge_success: "{name} Votre compte a été rechargé de {quota} reçus ! Nouveau solde : {total} reçus."
+    // Dans translations.fr, à côté de congrats_approved
+    guide_usage: "📘 *Comment utiliser B-Ticket*\n\n" +
+      "⚡ *Vente rapide* : `Produit, Quantité, Prix` (ex: Sac de riz, 2, 30000)\n\n" +
+      "📋 *MENU* — catalogue, historique de ventes, aide\n" +
+      "🖼️ *LOGO* — ajouter ton logo sur tes reçus\n" +
+      "💳 *RECHARGE* — recharger ton solde de reçus\n\n" +
+      "🎁 Tu reçois 15 reçus gratuits chaque 1er du mois, en plus de ton solde.",
   },
   en: {
     lang_changed: "Language changed to English 🇬🇧",
@@ -59,6 +66,13 @@ const translations = {
     welcome_new: "Welcome to B-Ticket Express {name}!\n\nYour account is being activated by our team. You will receive a notification shortly.",
     congrats_approved: "🎉 Congratulations {name}! Your B-Ticket account has been approved with a quota of {quota} receipts.",
     recharge_success: "{name} Your account has been topped up with {quota} receipts! New balance: {total} receipts."
+    // In translations.fr, next to congrats_approved
+    guide_usage: "📘 *How to Use B-Ticket*\n\n" +
+      "⚡ *Quick Sale*: `Product, Quantity, Price` (e.g., Bag of rice, 2, 30000)\n\n" +
+      "📋 *MENU* — catalog, sales history, help\n" +
+      "🖼️ *LOGO* — add your logo to your receipts\n" +
+      "💳 *TOP-UP* — top up your receipt balance\n\n" +
+      "🎁 You receive 15 free receipts on the 1st of every month, in addition to your balance.",
   }
 };
 
@@ -532,7 +546,6 @@ async function envoyerListeAttente(phone, phoneId) {
 // 8. GENERATION ET ENVOI DE L'IMAGE REÇU
 async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
-    // Blocage si le quota est déjà épuisé — avant tout traitement, toute écriture en base
     if (!user.receipt_quota || user.receipt_quota <= 0) {
       return await envoyerTexte(
         phone,
@@ -551,9 +564,12 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     const saleId = sale ? sale.id : Date.now().toString().slice(-6);
 
-    const width = 650;
-    const baseHeight = 700;
-    const itemHeight = 42;
+    // --- Format resserré façon vrai ticket ---
+    const width = 480;
+    const contentX = 32;
+    const contentRight = width - 32;
+    const baseHeight = 630;
+    const itemHeight = 38;
     const height = baseHeight + (items.length * itemHeight);
 
     const canvas = createCanvas(width, height);
@@ -564,6 +580,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const ambreVif = '#F2A63A';
     const encreDouce = '#4B6660';
     const ligneClair = '#E3D9C2';
+    const grisVia = '#9A9488';
 
     function drawRoundRect(x, y, w, h, r) {
       ctx.beginPath();
@@ -575,7 +592,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       ctx.closePath();
     }
 
-    // Fond général + carte
+    // Fond en dégradé + bordure de carte
     const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
     bgGradient.addColorStop(0, '#FBF6EC');
     bgGradient.addColorStop(1, '#FEFDFA');
@@ -583,7 +600,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = ligneClair;
     ctx.lineWidth = 1.5;
-    drawRoundRect(16, 16, width - 32, height - 32, 14);
+    drawRoundRect(12, 12, width - 24, height - 24, 12);
     ctx.stroke();
 
     let logoImg = null;
@@ -600,204 +617,214 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     if (logoImg) {
       // --- En-tête avec logo du commerçant ---
-      const boxX = 44, boxY = 44, boxSize = 92;
+      const boxSize = 64;
       ctx.fillStyle = '#FFFFFF';
-      drawRoundRect(boxX, boxY, boxSize, boxSize, 12);
+      drawRoundRect(contentX, 28, boxSize, boxSize, 10);
       ctx.fill();
       ctx.strokeStyle = ligneClair;
       ctx.stroke();
 
       ctx.save();
-      drawRoundRect(boxX + 6, boxY + 6, boxSize - 12, boxSize - 12, 8);
+      drawRoundRect(contentX + 5, 33, boxSize - 10, boxSize - 10, 7);
       ctx.clip();
-      const scale = Math.max((boxSize - 12) / logoImg.width, (boxSize - 12) / logoImg.height);
+      const scale = Math.max((boxSize - 10) / logoImg.width, (boxSize - 10) / logoImg.height);
       const lw = logoImg.width * scale, lh = logoImg.height * scale;
-      ctx.drawImage(logoImg, boxX + 6 + (boxSize - 12 - lw) / 2, boxY + 6 + (boxSize - 12 - lh) / 2, lw, lh);
+      ctx.drawImage(logoImg, contentX + 5 + (boxSize - 10 - lw) / 2, 33 + (boxSize - 10 - lh) / 2, lw, lh);
       ctx.restore();
 
+      const textX = contentX + boxSize + 16;
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 30px sans-serif';
+      ctx.font = 'bold 22px Georgia, serif';
       ctx.textAlign = 'left';
-      ctx.fillText(user.shop_name.toUpperCase(), boxX + boxSize + 20, boxY + 40);
-
-      ctx.strokeStyle = ambreVif;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(boxX + boxSize + 20, boxY + 54);
-      ctx.lineTo(boxX + boxSize + 20 + 160, boxY + 54);
-      ctx.stroke();
+      ctx.fillText(user.shop_name.toUpperCase(), textX, 55);
 
       ctx.fillStyle = encreDouce;
-      ctx.font = '13px sans-serif';
-      ctx.fillText('Reçu de vente', boxX + boxSize + 20, boxY + 76);
+      ctx.font = '12px sans-serif';
+      ctx.fillText('Reçu de vente', textX, 75);
 
-      // Mini-signature B-Ticket, discrète, en haut à droite
-      ctx.fillStyle = encreDouce;
-      ctx.font = '11px sans-serif';
+      ctx.fillStyle = grisVia;
+      ctx.font = '10px sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText('via B-Ticket', width - 44, boxY + 20);
+      ctx.fillText('via B-Ticket', contentRight, 40);
 
-      headerBottom = boxY + boxSize + 20;
+      headerBottom = 28 + boxSize + 14;
     } else {
-      // --- En-tête par défaut à la charte B-Ticket (pas de logo vendeur) ---
+      // --- En-tête par défaut à la charte B-Ticket ---
+      const badgeH = 72;
       ctx.fillStyle = encreMarche;
-      drawRoundRect(40, 40, width - 80, 96, 10);
+      drawRoundRect(contentX, 28, contentRight - contentX, badgeH, 8);
       ctx.fill();
 
       ctx.fillStyle = papierTicket;
       ctx.beginPath();
-      ctx.arc(40, 88, 15, 0, Math.PI * 2);
-      ctx.arc(width - 40, 88, 15, 0, Math.PI * 2);
+      ctx.arc(contentX, 28 + badgeH / 2, 13, 0, Math.PI * 2);
+      ctx.arc(contentRight, 28 + badgeH / 2, 13, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = papierTicket;
-      ctx.setLineDash([5, 5]);
+      ctx.globalAlpha = 0.35;
+      ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(118, 50);
-      ctx.lineTo(118, 126);
+      ctx.moveTo(contentX + 70, 40);
+      ctx.lineTo(contentX + 70, 28 + badgeH - 12);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
 
       ctx.fillStyle = ambreVif;
-      ctx.font = 'bold 36px sans-serif';
+      ctx.font = 'bold 28px Georgia, serif';
       ctx.textAlign = 'left';
-      ctx.fillText('B', 72, 100);
+      ctx.fillText('B', contentX + 20, 28 + badgeH / 2 + 10);
       ctx.fillStyle = papierTicket;
-      ctx.fillText('Ticket', 132, 100);
+      ctx.fillText('Ticket', contentX + 88, 28 + badgeH / 2 + 10);
 
+      headerBottom = 28 + badgeH + 24;
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 26px sans-serif';
-      ctx.fillText(user.shop_name.toUpperCase(), 50, 176);
-
-      headerBottom = 176;
+      ctx.font = 'bold 20px Georgia, serif';
+      ctx.fillText(user.shop_name.toUpperCase(), contentX, headerBottom);
+      headerBottom += 10;
     }
 
-    const saleIdShort = sale ? sale.id : Date.now().toString().slice(-6);
-    const receiptNum = `#BT-${saleIdShort}`;
+    const receiptNum = `#BT-${saleId}`;
     const dateStr = new Date().toLocaleDateString('fr-FR');
 
-    ctx.fillStyle = encreDouce;
-    ctx.font = '15px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`N° ${receiptNum}   |   ${dateStr}`, 50, headerBottom + 30);
+    ctx.fillStyle = encreDouce;
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillText(`N° ${receiptNum}   |   ${dateStr}`, contentX, headerBottom + 26);
 
     ctx.strokeStyle = ligneClair;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(50, headerBottom + 50);
-    ctx.lineTo(width - 50, headerBottom + 50);
+    ctx.moveTo(contentX, headerBottom + 40);
+    ctx.lineTo(contentRight, headerBottom + 40);
     ctx.stroke();
 
     ctx.fillStyle = encreDouce;
-    ctx.font = '14px sans-serif';
-    ctx.fillText('CLIENT', 50, headerBottom + 80);
+    ctx.font = '10.5px sans-serif';
+    ctx.fillText('CLIENT', contentX, headerBottom + 62);
     ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 19px sans-serif';
-    ctx.fillText(clientName, 50, headerBottom + 104);
+    ctx.font = 'bold 16px Georgia, serif';
+    ctx.fillText(clientName, contentX, headerBottom + 82);
 
     // En-tête de tableau
-    let currentY = headerBottom + 145;
+    let currentY = headerBottom + 116;
     ctx.fillStyle = encreDouce;
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('ARTICLE', 50, currentY);
+    ctx.font = 'bold 10.5px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('ARTICLE', contentX, currentY);
     ctx.textAlign = 'center';
-    ctx.fillText('QTÉ', 370, currentY);
+    ctx.fillText('QTÉ', 280, currentY);
     ctx.textAlign = 'right';
-    ctx.fillText('P.U', 470, currentY);
-    ctx.fillText('TOTAL', width - 50, currentY);
+    ctx.fillText('P.U', 355, currentY);
+    ctx.fillText('TOTAL', contentRight, currentY);
     ctx.textAlign = 'left';
 
-    currentY += 14;
+    currentY += 10;
     ctx.strokeStyle = ligneClair;
     ctx.beginPath();
-    ctx.moveTo(50, currentY);
-    ctx.lineTo(width - 50, currentY);
+    ctx.moveTo(contentX, currentY);
+    ctx.lineTo(contentRight, currentY);
     ctx.stroke();
-    currentY += 28;
+    currentY += 26;
 
     items.forEach((item, idx) => {
       const unitPrice = Math.round(item.total_price / item.qty);
 
       if (idx % 2 === 1) {
         ctx.fillStyle = '#F3ECDC';
-        ctx.fillRect(40, currentY - 22, width - 80, itemHeight - 6);
+        ctx.fillRect(contentX - 8, currentY - 19, (contentRight - contentX) + 16, itemHeight - 6);
       }
 
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 16px sans-serif';
+      ctx.font = 'bold 13px Georgia, serif';
       ctx.textAlign = 'left';
-      ctx.fillText(item.name.substring(0, 26), 50, currentY);
+      ctx.fillText(item.name.substring(0, 18), contentX, currentY);
 
-      ctx.font = '15px monospace';
+      ctx.font = '12px ui-monospace, monospace';
       ctx.fillStyle = encreDouce;
       ctx.textAlign = 'center';
-      ctx.fillText(`${item.qty}`, 370, currentY);
+      ctx.fillText(`${item.qty}`, 280, currentY);
       ctx.textAlign = 'right';
-      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 470, currentY);
+      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 355, currentY);
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 15px monospace';
-      ctx.fillText(`${item.total_price.toLocaleString('fr-FR')}`, width - 50, currentY);
+      ctx.font = 'bold 12px ui-monospace, monospace';
+      ctx.fillText(`${item.total_price.toLocaleString('fr-FR')}`, contentRight, currentY);
       ctx.textAlign = 'left';
 
       currentY += itemHeight;
     });
 
-    currentY += 18;
+    currentY += 12;
     ctx.fillStyle = ambreVif;
-    drawRoundRect(50, currentY, width - 100, 84, 10);
+    drawRoundRect(contentX, currentY, contentRight - contentX, 62, 8);
     ctx.fill();
 
     ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 19px sans-serif';
+    ctx.font = 'bold 14px Georgia, serif';
     ctx.textAlign = 'left';
-    ctx.fillText('TOTAL PAYÉ', 78, currentY + 49);
-    ctx.font = 'bold 30px monospace';
+    ctx.fillText('TOTAL PAYÉ', contentX + 20, currentY + 37);
+    ctx.font = 'bold 20px ui-monospace, monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`${totalAmount.toLocaleString('fr-FR')} FCFA`, width - 78, currentY + 49);
+    ctx.fillText(`${totalAmount.toLocaleString('fr-FR')} FCFA`, contentRight - 16, currentY + 37);
     ctx.textAlign = 'left';
 
-    currentY += 84 + 36;
+    currentY += 62 + 28;
     ctx.fillStyle = encreDouce;
-    ctx.font = '13px sans-serif';
+    ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Merci pour votre confiance !', width / 2, currentY);
-    ctx.font = '11px sans-serif';
-    ctx.fillText(`Contact : ${user.phone_number}`, width / 2, currentY + 20);
 
-    let iconH = 0, iconW = 0;
+    // Perforation avant le footer
+    currentY += 22;
+    ctx.strokeStyle = ligneClair;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(20, currentY);
+    ctx.lineTo(width - 20, currentY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Footer — signature discrète, sans numéro de téléphone
+    currentY += 24;
+    let iconOk = false;
     try {
       if (!brainiacsIconImg) {
         brainiacsIconImg = await loadImage(Buffer.from(BRAINIACS_ICON_B64, 'base64'));
       }
-      iconH = 15;
-      iconW = iconH * (brainiacsIconImg.width / brainiacsIconImg.height);
+      iconOk = true;
     } catch (e) {
       console.error("Pictogramme Brainiacs indisponible, signature sans icône:", e.message);
       brainiacsIconImg = null;
     }
-    ctx.font = '10.5px sans-serif';
-    const signatureText = 'Fait avec B-Ticket · Un produit';
-    const textWidth = ctx.measureText(signatureText).width;
-    const groupWidth = textWidth + 6 + iconW + 58; // 58 ≈ largeur approx. de "Brainiacs"
+
+    const iconH = 11;
+    const iconW = iconOk ? iconH * (brainiacsIconImg.width / brainiacsIconImg.height) : 0;
+    ctx.font = '9.5px sans-serif';
+    const part1 = 'Fait avec B-Ticket · un produit';
+    const w1 = ctx.measureText(part1).width;
+    ctx.font = 'bold 9.5px sans-serif';
+    const w2 = ctx.measureText('Brainiacs').width;
+    const groupWidth = w1 + 5 + (iconOk ? iconW + 4 : 0) + w2;
     const startX = (width - groupWidth) / 2;
 
     ctx.textAlign = 'left';
     ctx.fillStyle = ambreVif;
-    ctx.fillText(signatureText, startX, currentY + 42);
-    if (brainiacsIconImg) {
-      ctx.drawImage(brainiacsIconImg, startX + textWidth + 6, currentY + 42 - iconH + 2, iconW, iconH);
+    ctx.font = '9.5px sans-serif';
+    ctx.fillText(part1, startX, currentY);
+    let cursorX = startX + w1 + 5;
+    if (iconOk) {
+      ctx.drawImage(brainiacsIconImg, cursorX, currentY - iconH + 1, iconW, iconH);
+      cursorX += iconW + 4;
     }
-    ctx.drawImage(brainiacsIconImg, startX + textWidth + 6, currentY + 42 - iconH + 2, iconW, iconH);
     ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 10.5px sans-serif';
-    ctx.fillText('Brainiacs', startX + textWidth + 6 + iconW + 4, currentY + 42);
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillText('Brainiacs', cursorX, currentY);
     ctx.textAlign = 'left';
 
     const imageBuffer = canvas.toBuffer('image/png');
 
-    // Décrémentation sécurisée du quota
     const newQuota = Math.max(0, user.receipt_quota - 1);
-
     const { data: updateData, error: updateError } = await supabase
       .from('users')
       .update({ receipt_quota: newQuota })
@@ -807,10 +834,9 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     if (updateError) {
       console.error("❌ ÉCHEC MISE À JOUR QUOTA:", updateError);
     } else if (!updateData || updateData.length === 0) {
-      console.error(`⚠️ AUCUNE LIGNE TROUVÉE pour phone_number = "${user.phone_number}" (longueur: ${user.phone_number?.length})`);
+      console.error(`⚠️ AUCUNE LIGNE TROUVÉE pour phone_number = "${user.phone_number}"`);
     } else {
       user.receipt_quota = newQuota;
-      console.log(`✅ Quota mis à jour pour ${user.phone_number} → ${newQuota}`, updateData);
     }
 
     const mediaRes = await uploaderMediaWhatsApp(imageBuffer, 'image/png', phoneId);
@@ -863,6 +889,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
       const { data: targetUser } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
       if (targetUser) {
         await envoyerTexte(targetPhone, t(targetUser, 'congrats_approved').replace('{quota}', QUOTA_DEFAUT_APPROBATION), phoneId);
+        await envoyerTexte(targetPhone, t(targetUser, 'guide_usage'), phoneId); 
       }
       return await envoyerTexte(phone, `✅ ${targetPhone} validé avec ${QUOTA_DEFAUT_APPROBATION} reçus.`, phoneId);
     }
