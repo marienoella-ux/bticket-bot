@@ -47,13 +47,12 @@ const translations = {
     welcome_new: "Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
     congrats_approved: "🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de {quota} reçus.",
     recharge_success: "{name} Votre compte a été rechargé de {quota} reçus ! Nouveau solde : {total} reçus.",
-    // Dans translations.fr, à côté de congrats_approved
     guide_usage: "📘 *Comment utiliser B-Ticket*\n\n" +
       "⚡ *Vente rapide* : `Produit, Quantité, Prix` (ex: Sac de riz, 2, 30000)\n\n" +
       "📋 *MENU* — catalogue, historique de ventes, aide\n" +
       "🖼️ *LOGO* — ajouter ton logo sur tes reçus\n" +
       "💳 *RECHARGE* — recharger ton solde de reçus\n\n" +
-      "🎁 Tu reçois 15 reçus gratuits chaque 1er du mois, en plus de ton solde.",
+      "🎁 Tu reçois 15 reçus gratuits chaque 1er du mois, en plus de ton solde."
   },
   en: {
     lang_changed: "Language changed to English 🇬🇧",
