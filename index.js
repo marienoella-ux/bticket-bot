@@ -829,18 +829,6 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     ctx.font = 'bold 10.5px sans-serif';
     ctx.fillText('Brainiacs', cursorX, currentY);
     ctx.textAlign = 'left';
-    ctx.fillStyle = ambreVif;
-    ctx.font = '9.5px sans-serif';
-    ctx.fillText(part1, startX, currentY);
-    let cursorX = startX + w1 + 5;
-    if (iconOk) {
-      ctx.drawImage(brainiacsIconImg, cursorX, currentY - iconH + 1, iconW, iconH);
-      cursorX += iconW + 4;
-    }
-    ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 9.5px sans-serif';
-    ctx.fillText('Brainiacs', cursorX, currentY);
-    ctx.textAlign = 'left';
 
     const imageBuffer = canvas.toBuffer('image/png');
 
