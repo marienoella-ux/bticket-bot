@@ -512,7 +512,7 @@ async function envoyerListeAttente(phone, phoneId) {
   }
 }
 
-// 8. GENERATION ET ENVOI DE L'IMAGE REÇU
+// 8. GENERATION ET ENVOI DE L'IMAGE REÇU — format A4, HD, footer fixe en bas
 async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
   try {
     if (!user.receipt_quota || user.receipt_quota <= 0) {
@@ -533,13 +533,12 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
 
     const saleId = sale ? sale.id : Date.now().toString().slice(-6);
 
-    // --- Format resserré façon vrai ticket ---
-    const width = 480;
-    const contentX = 32;
-    const contentRight = width - 32;
-    const itemHeight = 38;
+    const width = 960;
+    const contentX = 80;
+    const contentRight = width - 80;
+    const itemRowHeight = 72;
+    const FOOTER_RESERVE = 140;
 
-    // Récupération du logo AVANT de calculer la hauteur — elle en dépend
     let logoImg = null;
     if (user.logo_url) {
       try {
@@ -550,14 +549,6 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       }
     }
 
-    // Hauteur d'en-tête fixe selon présence ou non d'un logo
-    const headerConstant = logoImg ? 122 : 134;
-    // Hauteur totale calculée à partir du contenu réel — plus jamais d'espace mort
-    const height = headerConstant + 320 + (itemHeight * items.length);
-
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-
     const papierTicket = '#FBF6EC';
     const encreMarche = '#015E54';
     const ambreVif = '#F2A63A';
@@ -565,7 +556,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const ligneClair = '#E3D9C2';
     const grisVia = '#9A9488';
 
-    function drawRoundRect(x, y, w, h, r) {
+    function drawRoundRect(ctx, x, y, w, h, r) {
       ctx.beginPath();
       ctx.moveTo(x + r, y);
       ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -575,197 +566,212 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       ctx.closePath();
     }
 
-    // Fond en dégradé + bordure de carte
+    const headerBottom = 216;
+    const ruleY = headerBottom + 34;
+    const clientLabelY = ruleY + 40;
+    const clientNameY = clientLabelY + 32;
+    const tableHeaderY = clientNameY + 56;
+    const tableHeaderLineY = tableHeaderY + 16;
+    const firstRowY = tableHeaderLineY + 46;
+    const afterTableY = firstRowY + (itemRowHeight * items.length);
+    const totalRowBorderY = afterTableY + 30;
+    const totalTextY = totalRowBorderY + 40;
+    const totalTagY = totalTextY + 30;
+    const thanksY = totalTagY + 60;
+    const contentEndY = thanksY + 20;
+
+    const standardHeight = Math.round(width * 1.4142);
+    const height = Math.max(standardHeight, contentEndY + FOOTER_RESERVE + 40);
+
+    const footerBorderY = height - FOOTER_RESERVE;
+    const footerTextY = footerBorderY + 46;
+
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
     const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
     bgGradient.addColorStop(0, '#FBF6EC');
     bgGradient.addColorStop(1, '#FEFDFA');
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = ligneClair;
-    ctx.lineWidth = 1.5;
-    drawRoundRect(12, 12, width - 24, height - 24, 12);
+    ctx.lineWidth = 2;
+    drawRoundRect(ctx, 16, 16, width - 32, height - 32, 8);
     ctx.stroke();
 
-    let headerBottom;
-
     if (logoImg) {
-      // --- En-tête avec logo du commerçant ---
-      const boxSize = 80;
+      const boxSize = 116;
       ctx.fillStyle = '#FFFFFF';
-      drawRoundRect(contentX, 28, boxSize, boxSize, 10);
+      drawRoundRect(ctx, contentX, 80, boxSize, boxSize, 14);
       ctx.fill();
       ctx.strokeStyle = ligneClair;
       ctx.stroke();
 
       ctx.save();
-      drawRoundRect(contentX + 5, 33, boxSize - 10, boxSize - 10, 7);
+      drawRoundRect(ctx, contentX + 8, 88, boxSize - 16, boxSize - 16, 10);
       ctx.clip();
-      const scale = Math.max((boxSize - 10) / logoImg.width, (boxSize - 10) / logoImg.height);
+      const scale = Math.max((boxSize - 16) / logoImg.width, (boxSize - 16) / logoImg.height);
       const lw = logoImg.width * scale, lh = logoImg.height * scale;
-      ctx.drawImage(logoImg, contentX + 5 + (boxSize - 10 - lw) / 2, 33 + (boxSize - 10 - lh) / 2, lw, lh);
+      ctx.drawImage(logoImg, contentX + 8 + (boxSize - 16 - lw) / 2, 88 + (boxSize - 16 - lh) / 2, lw, lh);
       ctx.restore();
 
-      const textX = contentX + boxSize + 16;
-      ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 24px Georgia, serif';
+      const textX = contentX + boxSize + 28;
       ctx.textAlign = 'left';
-      ctx.fillText(user.shop_name.toUpperCase(), textX, 58);
-
+      ctx.fillStyle = encreMarche;
+      ctx.font = 'bold 40px Georgia, serif';
+      ctx.fillText(user.shop_name.toUpperCase(), textX, 128);
       ctx.fillStyle = encreDouce;
-      ctx.font = '12px sans-serif';
-      ctx.fillText('Reçu de vente', textX, 80);
+      ctx.font = '22px sans-serif';
+      ctx.fillText('Reçu de vente', textX, 160);
 
       ctx.fillStyle = grisVia;
-      ctx.font = '10px sans-serif';
+      ctx.font = '18px sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText('via B-Ticket', contentRight, 40);
-
-      headerBottom = 28 + boxSize + 14;
+      ctx.fillText('via B-Ticket', contentRight, 90);
     } else {
-      // --- En-tête par défaut à la charte B-Ticket ---
-      const badgeH = 72;
+      const badgeW = 260, badgeH = 88;
       ctx.fillStyle = encreMarche;
-      drawRoundRect(contentX, 28, contentRight - contentX, badgeH, 8);
+      drawRoundRect(ctx, contentX, 80, badgeW, badgeH, 12);
       ctx.fill();
-
       ctx.fillStyle = papierTicket;
       ctx.beginPath();
-      ctx.arc(contentX, 28 + badgeH / 2, 13, 0, Math.PI * 2);
-      ctx.arc(contentRight, 28 + badgeH / 2, 13, 0, Math.PI * 2);
+      ctx.arc(contentX, 80 + badgeH / 2, 15, 0, Math.PI * 2);
+      ctx.arc(contentX + badgeW, 80 + badgeH / 2, 15, 0, Math.PI * 2);
       ctx.fill();
-
       ctx.strokeStyle = papierTicket;
       ctx.globalAlpha = 0.35;
-      ctx.setLineDash([4, 4]);
+      ctx.setLineDash([5, 5]);
       ctx.beginPath();
-      ctx.moveTo(contentX + 70, 40);
-      ctx.lineTo(contentX + 70, 28 + badgeH - 12);
+      ctx.moveTo(contentX + 88, 96);
+      ctx.lineTo(contentX + 88, 80 + badgeH - 16);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
-
-      ctx.fillStyle = ambreVif;
-      ctx.font = 'bold 28px Georgia, serif';
       ctx.textAlign = 'left';
-      ctx.fillText('B', contentX + 20, 28 + badgeH / 2 + 10);
+      ctx.fillStyle = ambreVif;
+      ctx.font = 'bold 34px Georgia, serif';
+      ctx.fillText('B', contentX + 26, 80 + badgeH / 2 + 12);
       ctx.fillStyle = papierTicket;
-      ctx.fillText('Ticket', contentX + 88, 28 + badgeH / 2 + 10);
+      ctx.fillText('Ticket', contentX + 110, 80 + badgeH / 2 + 12);
 
-      headerBottom = 28 + badgeH + 24;
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 20px Georgia, serif';
-      ctx.fillText(user.shop_name.toUpperCase(), contentX, headerBottom);
-      headerBottom += 10;
+      ctx.font = 'bold 36px Georgia, serif';
+      ctx.fillText(user.shop_name.toUpperCase(), contentX, 80 + badgeH + 40);
     }
 
     const receiptNum = `#BT-${saleId}`;
     const dateStr = new Date().toLocaleDateString('fr-FR');
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = encreDouce;
-    ctx.font = '12px ui-monospace, monospace';
-    ctx.fillText(`N° ${receiptNum}   |   ${dateStr}`, contentX, headerBottom + 26);
-
-    ctx.strokeStyle = ligneClair;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(contentX, headerBottom + 40);
-    ctx.lineTo(contentRight, headerBottom + 40);
-    ctx.stroke();
-
-    ctx.fillStyle = encreDouce;
-    ctx.font = '10.5px sans-serif';
-    ctx.fillText('CLIENT', contentX, headerBottom + 62);
-    ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 16px Georgia, serif';
-    ctx.fillText(clientName, contentX, headerBottom + 82);
-
-    // En-tête de tableau
-    let currentY = headerBottom + 116;
-    ctx.fillStyle = encreDouce;
-    ctx.font = 'bold 10.5px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('ARTICLE', contentX, currentY);
-    ctx.textAlign = 'center';
-    ctx.fillText('QTÉ', 280, currentY);
     ctx.textAlign = 'right';
-    ctx.fillText('P.U', 355, currentY);
-    ctx.fillText('TOTAL', contentRight, currentY);
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 42px Georgia, serif';
+    ctx.fillText('FACTURE', contentRight, 128);
+    ctx.fillStyle = encreDouce;
+    ctx.font = '22px ui-monospace, monospace';
+    ctx.fillText(`N° ${receiptNum}`, contentRight, 160);
+    ctx.fillText(dateStr, contentRight, 186);
+
     ctx.textAlign = 'left';
-
-    currentY += 10;
-    ctx.strokeStyle = ligneClair;
+    ctx.strokeStyle = encreMarche;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(contentX, currentY);
-    ctx.lineTo(contentRight, currentY);
+    ctx.moveTo(contentX, ruleY);
+    ctx.lineTo(contentRight, ruleY);
     ctx.stroke();
-    currentY += 26;
 
-    items.forEach((item, idx) => {
+    ctx.fillStyle = grisVia;
+    ctx.font = '19px sans-serif';
+    ctx.fillText('FACTURÉ À', contentX, clientLabelY);
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 32px Georgia, serif';
+    ctx.fillText(clientName, contentX, clientNameY);
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = 'bold 19px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('ARTICLE', contentX, tableHeaderY);
+    ctx.textAlign = 'center';
+    ctx.fillText('QTÉ', 560, tableHeaderY);
+    ctx.textAlign = 'right';
+    ctx.fillText('P.U', 710, tableHeaderY);
+    ctx.fillText('TOTAL', contentRight, tableHeaderY);
+
+    ctx.textAlign = 'left';
+    ctx.strokeStyle = encreMarche;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(contentX, tableHeaderLineY);
+    ctx.lineTo(contentRight, tableHeaderLineY);
+    ctx.stroke();
+
+    let rowY = firstRowY;
+    items.forEach((item) => {
       const unitPrice = Math.round(item.total_price / item.qty);
 
-      if (idx % 2 === 1) {
-        ctx.fillStyle = '#F3ECDC';
-        ctx.fillRect(contentX - 8, currentY - 19, (contentRight - contentX) + 16, itemHeight - 6);
-      }
-
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 13px Georgia, serif';
+      ctx.font = 'bold 25px Georgia, serif';
       ctx.textAlign = 'left';
-      ctx.fillText(item.name.substring(0, 18), contentX, currentY);
+      ctx.fillText(item.name.substring(0, 30), contentX, rowY);
 
-      ctx.font = '12px ui-monospace, monospace';
+      ctx.font = '23px ui-monospace, monospace';
       ctx.fillStyle = encreDouce;
       ctx.textAlign = 'center';
-      ctx.fillText(`${item.qty}`, 280, currentY);
+      ctx.fillText(`${item.qty}`, 560, rowY);
       ctx.textAlign = 'right';
-      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 355, currentY);
+      ctx.fillText(`${unitPrice.toLocaleString('fr-FR')}`, 710, rowY);
       ctx.fillStyle = encreMarche;
-      ctx.font = 'bold 12px ui-monospace, monospace';
-      ctx.fillText(`${item.total_price.toLocaleString('fr-FR')}`, contentRight, currentY);
-      ctx.textAlign = 'left';
+      ctx.font = 'bold 23px ui-monospace, monospace';
+      ctx.fillText(`${item.total_price.toLocaleString('fr-FR')}`, contentRight, rowY);
 
-      currentY += itemHeight;
+      ctx.strokeStyle = ligneClair;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(contentX, rowY + 22);
+      ctx.lineTo(contentRight, rowY + 22);
+      ctx.stroke();
+
+      rowY += itemRowHeight;
     });
 
-    currentY += 12;
-    ctx.fillStyle = ambreVif;
-    drawRoundRect(contentX, currentY, contentRight - contentX, 62, 8);
-    ctx.fill();
+    const totalBoxWidth = 440;
+    const totalBoxX = contentRight - totalBoxWidth;
 
-    ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 14px Georgia, serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('TOTAL PAYÉ', contentX + 20, currentY + 37);
-    ctx.font = 'bold 20px ui-monospace, monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${totalAmount.toLocaleString('fr-FR')} FCFA`, contentRight - 16, currentY + 37);
-    ctx.textAlign = 'left';
-
-    currentY += 62 + 28;
-    ctx.fillStyle = encreDouce;
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Merci pour votre confiance !', width / 2, currentY);
-
-    // Perforation avant le footer
-    currentY += 22;
-    ctx.strokeStyle = ligneClair;
-    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = encreMarche;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(20, currentY);
-    ctx.lineTo(width - 20, currentY);
+    ctx.moveTo(totalBoxX, totalRowBorderY);
+    ctx.lineTo(contentRight, totalRowBorderY);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 26px Georgia, serif';
+    ctx.fillText('TOTAL PAYÉ', totalBoxX, totalTextY);
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 34px ui-monospace, monospace';
+    ctx.fillText(`${totalAmount.toLocaleString('fr-FR')} FCFA`, contentRight, totalTextY);
+
+    ctx.fillStyle = ambreVif;
+    drawRoundRect(ctx, totalBoxX, totalTagY - 22, totalBoxWidth, 34, 6);
+    ctx.fill();
+    ctx.fillStyle = encreMarche;
+    ctx.font = 'bold 17px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAYÉ', totalBoxX + totalBoxWidth / 2, totalTagY + 1);
+
+    ctx.fillStyle = encreDouce;
+    ctx.font = '22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Merci pour votre confiance !', width / 2, thanksY);
+
+    ctx.strokeStyle = ligneClair;
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(contentX, footerBorderY);
+    ctx.lineTo(contentRight, footerBorderY);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Footer — deux lignes, meilleur contraste
-    currentY += 20;
-    ctx.fillStyle = encreDouce;
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Fait avec B-Ticket', width / 2, currentY);
-
-    currentY += 20;
     let iconOk = false;
     try {
       if (!brainiacsIconImg) {
@@ -777,28 +783,28 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       brainiacsIconImg = null;
     }
 
-    const iconH = 13;
-    const iconW = iconOk ? iconH * (brainiacsIconImg.width / brainiacsIconImg.height) : 0;
-    ctx.font = '10.5px sans-serif';
-    const prefixText = 'un produit';
+    ctx.font = '18px sans-serif';
+    const prefixText = 'Fait avec B-Ticket · un produit';
     const wPrefix = ctx.measureText(prefixText).width;
-    ctx.font = 'bold 10.5px sans-serif';
+    ctx.font = 'bold 18px sans-serif';
     const wBrainiacs = ctx.measureText('Brainiacs').width;
-    const groupWidth = wPrefix + 6 + (iconOk ? iconW + 5 : 0) + wBrainiacs;
+    const iconH = 20;
+    const iconW = iconOk ? iconH * (brainiacsIconImg.width / brainiacsIconImg.height) : 0;
+    const groupWidth = wPrefix + 8 + (iconOk ? iconW + 8 : 0) + wBrainiacs;
     const startX = (width - groupWidth) / 2;
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = encreDouce;
-    ctx.font = '10.5px sans-serif';
-    ctx.fillText(prefixText, startX, currentY);
-    let cursorX = startX + wPrefix + 6;
+    ctx.fillStyle = grisVia;
+    ctx.font = '18px sans-serif';
+    ctx.fillText(prefixText, startX, footerTextY);
+    let cursorX = startX + wPrefix + 8;
     if (iconOk) {
-      ctx.drawImage(brainiacsIconImg, cursorX, currentY - iconH + 2, iconW, iconH);
-      cursorX += iconW + 5;
+      ctx.drawImage(brainiacsIconImg, cursorX, footerTextY - iconH + 4, iconW, iconH);
+      cursorX += iconW + 8;
     }
     ctx.fillStyle = encreMarche;
-    ctx.font = 'bold 10.5px sans-serif';
-    ctx.fillText('Brainiacs', cursorX, currentY);
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText('Brainiacs', cursorX, footerTextY);
     ctx.textAlign = 'left';
 
     const imageBuffer = canvas.toBuffer('image/png');
