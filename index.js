@@ -307,36 +307,6 @@ async function executerCreditsMensuels(currentMonth, phones) {
   }
 }
 
-// Crédit mensuel
-async function distribuerCreditsMensuels() {
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  const { data: users, error } = await supabase
-    .from('users')
-    .select('phone_number, receipt_quota, last_free_credit_month')
-    .eq('is_approved', true)
-    .or(`last_free_credit_month.is.null,last_free_credit_month.neq.${currentMonth}`);
-
-  if (error) {
-    console.error("Erreur lecture utilisateurs pour crédit mensuel:", error);
-    return;
-  }
-  if (!users || users.length === 0) {
-    console.log("Aucun vendeur à créditer pour", currentMonth);
-    return;
-  }
-
-  for (const u of users) {
-    const newQuota = (u.receipt_quota || 0) + 15;
-    await supabase.from('users').update({
-      receipt_quota: newQuota,
-      last_free_credit_month: currentMonth
-    }).eq('phone_number', u.phone_number);
-  }
-  console.log(`✅ Crédit mensuel (+15) distribué à ${users.length} vendeur(s) pour ${currentMonth}`);
-}
-
 // 4. Demander le nom du client
 async function envoyerDemandeClient(phone, user, conv, phoneId) {
   const { data: recentSales } = await supabase
@@ -1159,10 +1129,6 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
     // Cas de repli : conv existe mais avec un step inconnu — on relance proprement
     await supabase.from('conversations').delete().eq('phone_number', phone);
     return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nQuel est votre *prénom* ?", phoneId);
-  }
-
-  if (!user.is_approved) {
-    return await envoyerTexte(phone, "⏳ Votre compte est en attente d'approbation par l'administrateur. Merci de patienter !", phoneId);
   }
 
   if (!user.is_approved) {
