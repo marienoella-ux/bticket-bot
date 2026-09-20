@@ -569,6 +569,17 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     const contentRight = width - 32;
     const itemHeight = 38;
 
+    // Récupération du logo AVANT de calculer la hauteur — elle en dépend
+    let logoImg = null;
+    if (user.logo_url) {
+      try {
+        const logoRes = await axios.get(user.logo_url, { responseType: 'arraybuffer' });
+        logoImg = await loadImage(Buffer.from(logoRes.data));
+      } catch (e) {
+        console.error("Logo introuvable, fallback sans logo:", e.message);
+      }
+    }
+
     // Hauteur d'en-tête fixe selon présence ou non d'un logo
     const headerConstant = logoImg ? 122 : 134;
     // Hauteur totale calculée à partir du contenu réel — plus jamais d'espace mort
@@ -604,16 +615,6 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     ctx.lineWidth = 1.5;
     drawRoundRect(12, 12, width - 24, height - 24, 12);
     ctx.stroke();
-
-    let logoImg = null;
-    if (user.logo_url) {
-      try {
-        const logoRes = await axios.get(user.logo_url, { responseType: 'arraybuffer' });
-        logoImg = await loadImage(Buffer.from(logoRes.data));
-      } catch (e) {
-        console.error("Logo introuvable, fallback sans logo:", e.message);
-      }
-    }
 
     let headerBottom;
 
