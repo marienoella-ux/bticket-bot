@@ -38,15 +38,15 @@ const messagesTraites = new Set();
 const translations = {
   fr: {
     lang_changed: "Langue changée en Français 🇫🇷",
-    welcome: "Bienvenue {name} ! Choisissez une option ci-dessous ou envoyez un message au format Express (ex: Produit, 2, 5000).",
-    express_prompt: "*Mode Express* : Envoyez directement vos articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
-    quota_warning: "{name}, votre solde de reçus est épuisé (0 restant). Veuillez recharger votre compte.",
+    welcome: "Salut {name} ! Choisis une option ci-dessous, ou envoie directement tes articles en mode Express (ex: Produit, 2, 5000).",
+    express_prompt: "*Mode Express* : envoie directement tes articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
+    quota_warning: "{name}, ton solde est à zéro. Envoie *RECHARGE* pour continuer à faire tes reçus.",
     btn_catalog: "Mon catalogue",
     btn_sales: "Mes ventes",
     btn_help: "❓ Aide",
     welcome_new: "Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
-    congrats_approved: "🎉 Félicitations {name}! Votre compte B-Ticket a été approuvé avec un quota de {quota} reçus.",
-    recharge_success: "{name} Votre compte a été rechargé de {quota} reçus ! Nouveau solde : {total} reçus.",
+    congrats_approved: "🎉 Félicitations {name} ! Ton compte B-Ticket est validé, avec {quota} reçus offerts pour démarrer. On est ensemble ! 🤝",
+    recharge_success: "{name}, ta recharge est passée ! +{quota} reçus, nouveau solde : {total} reçus. 💪",
     guide_usage: "📘 *Comment utiliser B-Ticket*\n\n" +
       "⚡ *Vente rapide* : `Produit, Quantité, Prix` (ex: Sac de riz, 2, 30000)\n\n" +
       "📋 *MENU* — catalogue, historique de ventes, aide\n" +
@@ -340,7 +340,7 @@ async function envoyerDemandeClient(phone, user, conv, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: "👤 *À quel nom souhaitez-vous émettre le reçu ?*\n\nChoisissez un client récent, ou répondez directement avec un nom." },
+          body: { text: "👤 *Le reçu est pour qui ?*\n\nChoisis un client récent ci-dessous, ou tape directement son nom (ex: *Mme Alice*)." },
           action: { buttons }
         }
       },
@@ -365,7 +365,7 @@ async function afficherRecuEbauche(phone, user, items, clientName, phoneId) {
 
   recap += `-----------------------------------\n`;
   recap += `💰 *TOTAL À PAYER : ${total.toLocaleString('fr-FR')} FCFA*\n\n`;
-  recap += `Confirmez-vous la génération du reçu ? (Quota restant : ${user.receipt_quota} reçus)`;
+  recap += `On génère le reçu ? (Il te reste ${user.receipt_quota} reçus)`;
 
   await supabase.from('conversations').upsert({
     phone_number: phone,
@@ -1054,7 +1054,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
   if (!user) {
     if (!conv) {
       await supabase.from('conversations').upsert({ phone_number: phone, step: 'ONBOARDING_FIRST_NAME' });
-      return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nQuel est votre *prénom* ?", phoneId);
+      return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nC'est quoi ton prénom ?", phoneId);
     }
 
     if (conv.step === 'ONBOARDING_FIRST_NAME') {
@@ -1062,7 +1062,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
         step: 'ONBOARDING_SHOP_NAME',
         data: { first_name: text.trim() }
       }).eq('phone_number', phone);
-      return await envoyerTexte(phone, `Ravi de vous rencontrer ${text.trim()} ! 👋\n\nQuel est le *nom de votre boutique* ?`, phoneId);
+      return await envoyerTexte(phone, `Enchanté ${text.trim()} ! 👋\n\nC'est quoi le nom de ta boutique ?`, phoneId);
     }
 
     if (conv.step === 'ONBOARDING_SHOP_NAME') {
@@ -1072,9 +1072,9 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
         data: { ...conv.data, shop_name: text.trim(), catalog_items: [] }
       }).eq('phone_number', phone);
       return await envoyerTexte(phone,
-        `Parfait ! Une dernière étape : ajoute quelques articles à ton catalogue.\n\n` +
-        `Envoie *Nom, Prix* (ex: Coupe, 1500), un par un.\n` +
-        `Écris *FIN* quand tu as terminé, ou *PASSER* pour configurer plus tard.`,
+        `Parfait ! Dernière étape : dis-moi ce que tu vends.\n\n` +
+        `Envoie *Nom, Prix* (ex: Coupe, 1500), un article à la fois.\n` +
+        `Écris *FIN* quand tu as fini, ou *PASSER* pour le faire plus tard.`,
         phoneId);
     }
 
@@ -1083,7 +1083,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
       if (tLower === 'fin' || tLower === 'passer') {
         await supabase.from('conversations').update({ step: 'ONBOARDING_LOGO', data: conv.data }).eq('phone_number', phone);
         return await envoyerTexte(phone,
-          "📷 Dernière étape (optionnelle) : envoie une photo de ton logo, idéalement carrée.\n\nOu écris *PASSER* pour l'ajouter plus tard.",
+          "📷 Une dernière chose, si tu veux : envoie une photo de ton logo.\n\nOu écris *PASSER*, tu pourras l'ajouter n'importe quand.",
           phoneId);
       }
 
@@ -1131,14 +1131,14 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
 
       await supabase.from('conversations').delete().eq('phone_number', phone);
       return await envoyerTexte(phone,
-        logoUrl ? "✅ Inscription complète, logo enregistré ! Ton compte est en attente de validation."
-                : "✅ Inscription complète ! Ton compte est en attente de validation.",
+        logoUrl ? `✅ C'est fait, ${conv.data.shop_name} est enregistrée ! On valide ton compte très vite. On est ensemble 🤝`
+                : `✅ C'est fait, ${conv.data.shop_name} est enregistrée ! On valide ton compte très vite. On est ensemble 🤝`,
         phoneId);
     }
 
     // Cas de repli : conv existe mais avec un step inconnu — on relance proprement
     await supabase.from('conversations').delete().eq('phone_number', phone);
-    return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nQuel est votre *prénom* ?", phoneId);
+    return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nC'est quoi ton prénom ?", phoneId);
   }
 
   if (!user.is_approved) {
@@ -1242,10 +1242,10 @@ if (interactiveId.startsWith('prod_')) {
   // ⬇️ ENCORE NOUVEAU : déclencheur de demande de recharge
   if (text && text.toLowerCase().trim() === 'recharge') {
     await envoyerTexte(phone,
-      `💳 *Recharger votre compte*\n\n` +
-      `1. Effectuez le paiement au code marchand Orange Money : *[ton code]*\n` +
-      `2. Répondez avec : *Nom du compte payeur, Montant* (ex: Jean Mballa, 5000)\n\n` +
-      `Votre demande sera traitée sous peu.`,
+      `💳 *Recharge ton compte*\n\n` +
+      `1. Paie au code marchand Orange Money : *[ton code]*\n` +
+      `2. Réponds avec : *Nom du compte payeur, Montant* (ex: Jean Mballa, 5000)\n\n` +
+      `Ta demande sera traitée rapidement.`,
       phoneId
     );
     await supabase.from('conversations').upsert({ phone_number: phone, step: 'AWAITING_RECHARGE_PROOF' });
