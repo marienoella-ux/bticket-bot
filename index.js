@@ -44,7 +44,7 @@ const translations = {
     btn_catalog: "Mon catalogue",
     btn_sales: "Mes ventes",
     btn_help: "❓ Aide",
-    welcome_new: "Bienvenue sur B-Ticket Express {name}!\n\nVotre compte est en cours d'activation par notre équipe administrative. Vous recevrez une notification très rapidement.",
+    welcome_new: "Bienvenue sur B-Ticket Express {name} !\n\nTon compte est en cours d'activation par notre équipe administrative. Tu recevras une notification très rapidement.",
     congrats_approved: "🎉 Félicitations {name} ! Ton compte B-Ticket est validé, avec {quota} reçus offerts pour démarrer. On est ensemble ! 🤝",
     recharge_success: "{name}, ta recharge est passée ! +{quota} reçus, nouveau solde : {total} reçus. 💪",
     guide_usage: "📘 *Comment utiliser B-Ticket*\n\n" +
@@ -157,7 +157,7 @@ async function envoyerMenuPrincipal(phone, user, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: `Bonjour *${user.first_name}* ! Que souhaitez-vous faire ?\n\nSolde : *${user.receipt_quota} reçus*` },
+          body: { text: `Salut *${user.first_name}* ! Qu'est-ce que tu veux faire ?\n\nSolde : *${user.receipt_quota} reçus*` },
           action: {
             buttons: [
               { type: 'reply', reply: { id: 'btn_menu_catalog', title: 'Mon catalogue' } },
@@ -187,7 +187,7 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
     return await envoyerTexte(phone, "Aucune vente enregistrée pour le moment.", phoneId);
   }
 
-  let msg = `*VOS 5 DERNIÈRES VENTES*\n\n`;
+  let msg = `*TES 5 DERNIÈRES VENTES*\n\n`;
   sales.forEach(s => {
     const date = new Date(s.created_at).toLocaleDateString('fr-FR');
     msg += `• ${date} — ${s.client_name} : *${s.total_amount.toLocaleString('fr-FR')} FCFA*\n`;
@@ -199,14 +199,14 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
 async function envoyerAide(phone, user, phoneId) {
   const msg = `❓ *AIDE B-TICKET*\n\n` +
     `*Mode Express* — envoyez directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
-    `*Menu guidé* — envoyez *MENU* pour choisir un article dans votre catalogue, consulter vos ventes, ou revoir cette aide.\n\n` +
+    `*Menu guidé* — envoie *MENU* pour choisir un article dans ton catalogue, consulter tes ventes, ou revoir cette aide.\n\n` +
     `Solde actuel : *${user.receipt_quota} reçus*`;
   return await envoyerTexte(phone, msg, phoneId);
 }
 
 // 2. Envoyer les boutons de validation du panier
 async function envoyerBoutonsCart(phone, items, phoneId) {
-  let recap = `*VOTRE PANIER ACTUEL (${items.length} article(s)) :*\n\n`;
+  let recap = `*TON PANIER ACTUEL (${items.length} article(s)) :*\n\n`;
   let total = 0;
   items.forEach((item, index) => {
     recap += `${index + 1}. *${item.name}* (x${item.qty}) - ${item.total_price.toLocaleString('fr-FR')} FCFA\n`;
@@ -518,7 +518,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
     if (!user.receipt_quota || user.receipt_quota <= 0) {
       return await envoyerTexte(
         phone,
-        `⚠️ *Solde épuisé (0 reçu restant).*\n\nVeuillez recharger votre compte pour continuer à générer des reçus.`,
+        `⚠️ *Solde épuisé (0 reçu restant).*\n\nRecharge ton compte pour continuer à générer des reçus.`,
         phoneId
       );
     }
@@ -1142,7 +1142,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
   }
 
   if (!user.is_approved) {
-    return await envoyerTexte(phone, "⏳ Votre compte est en attente d'approbation par l'administrateur. Merci de patienter !", phoneId);
+    return await envoyerTexte(phone, "⏳ Ton compte est en attente d'approbation par l'administrateur. Merci de patienter !", phoneId);
   }
 
   // ------------------------------------------
