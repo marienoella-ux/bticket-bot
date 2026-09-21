@@ -41,23 +41,27 @@ const messagesTraites = new Set();
 const translations = {
   fr: {
     lang_changed: "Langue changée en Français 🇫🇷",
-    welcome: "Salut {name} ! Choisis une option ci-dessous, ou envoie directement tes articles en mode Express (ex: Produit, 2, 5000).",
-    express_prompt: "*Mode Express* : envoie directement tes articles au format :\n`Nom du produit, Quantité, Prix total`\n\nExemple :\n*Sac de riz, 2, 30000*",
-    quota_warning: "{name}, ton solde est à zéro. Envoie *RECHARGE* pour continuer à faire tes reçus.",
+    welcome: "Salut {name} ! 👋\n\nChoisis une option ci-dessous, ou vends directement en Express.",
+    express_prompt: "⚡ *Mode Express*\n\n`Nom du produit, Quantité, Prix total`\n\n_Exemple :_ Sac de riz, 2, 30000",
+    quota_warning: "⚠️ {name}, ton solde est à *0 reçu*.\n\nEnvoie *RECHARGE* pour continuer.",
     btn_catalog: "Mon catalogue",
     btn_sales: "Mes ventes",
     btn_help: "❓ Aide",
     welcome_new: "Bienvenue sur B-Ticket Express {name} !\n\nTon compte est en cours d'activation par notre équipe administrative. Tu recevras une notification très rapidement.",
-    congrats_approved: "🎉 Félicitations {name} ! Ton compte B-Ticket est validé, avec {quota} reçus offerts pour démarrer. On est ensemble ! 🤝",
-    recharge_success: "{name}, ta recharge est passée ! +{quota} reçus, nouveau solde : {total} reçus. 💪",
+    congrats_approved: "🎉 *Félicitations {name} !*\n\nTon compte B-Ticket est activé.\n💳 *{quota} reçus* offerts pour démarrer.\n\nOn est ensemble ! 🤝",
+    recharge_success: "💳 *Recharge confirmée {name} !*\n\n+{quota} reçus\nNouveau solde : *{total} reçus*",
     guide_usage: "📘 *Comment utiliser B-Ticket*\n\n" +
-      "⚡ *Vente rapide* : `Produit, Quantité, Prix` (ex: Sac de riz, 2, 30000)\n\n" +
-      "📋 *MENU* — catalogue, historique de ventes, aide\n" +
-      "🖼️ *LOGO* — ajouter ton logo sur tes reçus\n" +
-      "💳 *RECHARGE* — recharger ton solde de reçus\n" +
-      "🤝 *PARRAINAGE* — invite d'autres commerçants et gagne des reçus\n" +
-      "🌐 *LANGUE* — changer la langue (français/anglais)\n\n" +
-      "🎁 Tu reçois 15 reçus gratuits chaque 1er du mois, en plus de ton solde."
+      "*Pour vendre*\n" +
+      "⚡ Envoie : `Produit, Quantité, Prix`\n" +
+      "_Exemple :_ Sac de riz, 2, 30000\n\n" +
+      "📋 Ou tape *MENU* pour choisir depuis ton catalogue\n\n" +
+      "*Pour gérer ton compte*\n" +
+      "🖼️ *LOGO* — ajouter ton logo aux reçus\n" +
+      "💳 *RECHARGE* — recharger ton solde\n" +
+      "🤝 *PARRAINAGE* — invite et gagne des reçus\n" +
+      "🌐 *LANGUE* — changer la langue\n" +
+      "❓ *AIDE* — revoir cette liste\n\n" +
+      "🎁 *15 reçus offerts* chaque 1er du mois, en plus de ton solde."
   },
   en: {
     lang_changed: "Language changed to English 🇬🇧",
@@ -72,13 +76,17 @@ const translations = {
     recharge_success: "{name} Your account has been topped up with {quota} receipts! New balance: {total} receipts.",
     // In translations.fr, next to congrats_approved
     guide_usage: "📘 *How to Use B-Ticket*\n\n" +
-      "⚡ *Quick Sale*: `Product, Quantity, Price` (e.g., Bag of rice, 2, 30000)\n\n" +
-      "📋 *MENU* — catalog, sales history, help\n" +
+      "*To sell*\n" +
+      "⚡ Send: `Product, Quantity, Price`\n" +
+      "_Example:_ Bag of rice, 2, 30000\n\n" +
+      "📋 Or type *MENU* to choose from your catalog\n\n" +
+      "*To manage your account*\n" +
       "🖼️ *LOGO* — add your logo to your receipts\n" +
-      "💳 *TOP-UP* — top up your receipt balance\n" +
-      "🤝 *REFERRAL* — invite other vendors and earn receipts\n" +
-      "🌐 *LANGUAGE* — switch language (French/English)\n\n" +
-      "🎁 You get 15 free receipts on the 1st of every month, on top of your balance."
+      "💳 *TOP-UP* — top up your balance\n" +
+      "🤝 *REFERRAL* — invite and earn receipts\n" +
+      "🌐 *LANGUAGE* — switch language\n" +
+      "❓ *HELP* — see this list again\n\n" +
+      "🎁 *15 free receipts* on the 1st of every month, on top of your balance."
   }
 };
 
@@ -164,7 +172,7 @@ async function envoyerMenuPrincipal(phone, user, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: `Salut *${user.first_name}* ! Qu'est-ce que tu veux faire ?\n\nSolde : *${user.receipt_quota} reçus*` },
+          body: { text: `Salut *${user.first_name}* ! 👋\n\n💳 Solde : *${user.receipt_quota} reçus*\n\nQue veux-tu faire ?` },
           action: {
             buttons: [
               { type: 'reply', reply: { id: 'btn_menu_catalog', title: 'Mon catalogue' } },
@@ -205,14 +213,15 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
 //AIDE
 async function envoyerAide(phone, user, phoneId) {
   const msg = `❓ *AIDE B-TICKET*\n\n` +
-    `Voici tous les mots qui déclenchent une action :\n\n` +
-    `⚡ *Produit, Quantité, Prix* — vente rapide (ex: Sac de riz, 2, 30000)\n` +
-    `📋 *MENU* — catalogue, ventes, aide\n` +
-    `🖼️ *LOGO* — ajouter ton logo aux reçus\n` +
-    `💳 *RECHARGE* — recharger ton solde\n` +
-    `🤝 *PARRAINAGE* — ton lien à partager, gagne des reçus\n` +
-    `🌐 *LANGUE* — changer la langue\n\n` +
-    `Solde actuel : *${user.receipt_quota} reçus*`;
+    `*Pour vendre*\n` +
+    `⚡ \`Produit, Quantité, Prix\`\n` +
+    `📋 *MENU* — catalogue, ventes, aide\n\n` +
+    `*Pour gérer ton compte*\n` +
+    `🖼️ *LOGO*\n` +
+    `💳 *RECHARGE*\n` +
+    `🤝 *PARRAINAGE*\n` +
+    `🌐 *LANGUE*\n\n` +
+    `💰 Solde actuel : *${user.receipt_quota} reçus*`;
   return await envoyerTexte(phone, msg, phoneId);
 }
 
@@ -352,7 +361,7 @@ async function envoyerDemandeClient(phone, user, conv, phoneId) {
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: "👤 *Le reçu est pour qui ?*\n\nChoisis un client récent ci-dessous, ou tape directement son nom (ex: *Mme Alice*)." },
+          body: { text: "👤 *Le reçu est pour qui ?*\n\nChoisis un client récent, ou tape directement son nom." },
           action: { buttons }
         }
       },
@@ -1267,8 +1276,8 @@ if (interactiveId.startsWith('prod_')) {
     });
     return await envoyerTexte(
       phone,
-      `📦 *${prod.name}* — prix catalogue : ${prod.price.toLocaleString('fr-FR')} FCFA\n\n` +
-      `Quantité et prix convenu ? (ex: \`2, 4500\`)\nOu juste la quantité si le prix catalogue s'applique (ex: \`2\`)`,
+      `📦 *${prod.name}*\n💰 Prix catalogue : *${prod.price.toLocaleString('fr-FR')} FCFA*\n\n` +
+      `Quantité et prix convenu ?\n_Exemple :_ 2, 4500\n\nOu juste la quantité si le prix catalogue s'applique.`,
       phoneId
     );
   }
@@ -1292,9 +1301,10 @@ if (interactiveId.startsWith('prod_')) {
   // ⬇️ ENCORE NOUVEAU : déclencheur de demande de recharge
   if (text && text.toLowerCase().trim() === 'recharge') {
     await envoyerTexte(phone,
-      `💳 *Recharge ton compte*\n\n` +
-      `1. Paie au code marchand Orange Money : *[ton code]*\n` +
-      `2. Réponds avec : *Nom du compte payeur, Montant* (ex: Jean Mballa, 5000)\n\n` +
+      `💳 *Recharger ton compte*\n\n` +
+      `1️⃣ Paie au code marchand Orange Money : *[ton code]*\n` +
+      `2️⃣ Réponds avec : *Nom du payeur, Montant*\n` +
+      `_Exemple :_ Jean Mballa, 5000\n\n` +
       `Ta demande sera traitée rapidement.`,
       phoneId
     );
@@ -1308,11 +1318,11 @@ if (interactiveId.startsWith('prod_')) {
     const lien = `https://wa.me/${BOT_WHATSAPP_NUMBER}?text=PARRAIN%20${user.phone_number}`;
 
     await envoyerTexte(phone,
-      `🤝 *Ton parrainage*\n\nCommerçants déjà parrainés : *${filleuls || 0}*\nÀ chaque inscription validée, tu reçois +${REFERRAL_BONUS_PARRAIN} reçus.\n\n👇 Transfère le message ci-dessous à qui tu veux :`,
+      `🤝 *Ton parrainage*\n\n👥 Déjà parrainés : *${filleuls || 0}*\n🎁 +${REFERRAL_BONUS_PARRAIN} reçus par inscription validée\n\n👇 Transfère le message suivant :`,
       phoneId);
 
     return await envoyerTexte(phone,
-      `🧾 J'utilise *B-Ticket* pour faire des reçus pro directement sur WhatsApp, sans rien installer. Essaie, tu démarres avec des reçus offerts 👇\n\n${lien}`,
+      `🧾 J'utilise *B-Ticket* pour mes reçus, directement sur WhatsApp. Essaie, tu démarres avec des reçus offerts 👇\n\n${lien}`,
       phoneId);
   }
    // ⬇️ NOUVEAU : réception de la quantité / prix négocié
@@ -1357,7 +1367,7 @@ if (interactiveId.startsWith('prod_')) {
 
     await supabase.from('conversations').delete().eq('phone_number', phone);
     await supabase.from('recharge_requests').insert({ phone_number: phone, payer_name: payerName, amount });
-    return await envoyerTexte(phone, "✅ Demande enregistrée. Elle sera traitée sous peu.", phoneId);
+    return await envoyerTexte(phone, "✅ *Demande transmise.*\n\nTu recevras une confirmation dès que le paiement est vérifié.", phoneId);
   }
   
   // 4. Nouveaux ADD_PRODUCT_NAME / ADD_PRODUCT_PRICE
@@ -1416,7 +1426,7 @@ if (interactiveId.startsWith('prod_')) {
   }
 
   // MENU PAR DÉFAUT SI AUCUNE COMMANDE N'EST RECONNUE
-  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\nEnvoie *AIDE* pour voir toutes les commandes, ou *MENU* pour naviguer.`;
+  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\n💡 *AIDE* pour toutes les commandes, *MENU* pour naviguer.`;
   return await envoyerTexte(phone, defaultMessage, phoneId);
 }
 
