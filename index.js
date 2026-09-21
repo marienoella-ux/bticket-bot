@@ -8,6 +8,9 @@ const BRAINIACS_ICON_B64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAAB2CAYAAAA+/DbEAAAIg0lE
 let brainiacsIconImg = null; // mis en cache après le premier chargement
 const TARIF_REF_FCFA = 35;        // prix moyen pondéré par reçu, sert à convertir un montant en crédits
 const QUOTA_DEFAUT_APPROBATION = 15;
+const REFERRAL_BONUS_PARRAIN = 10;
+const REFERRAL_BONUS_FILLEUL = 5;
+const BOT_WHATSAPP_NUMBER = "[NUMÉRO_WHATSAPP_DU_BOT_ICI]"; // format E.164 sans le +, ex: 237690000000
 
 const app = express();
 
@@ -870,17 +873,35 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
   const targetPhone = interactiveId.replace('approve_', '');
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const { data: pendingUser } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
+  const referrerPhone = pendingUser?.referred_by;
+
+  let welcomeQuota = QUOTA_DEFAUT_APPROBATION;
+  if (referrerPhone) welcomeQuota += REFERRAL_BONUS_FILLEUL;
+
   await supabase.from('users').update({
     is_approved: true,
-    receipt_quota: QUOTA_DEFAUT_APPROBATION,
+    receipt_quota: welcomeQuota,
     last_free_credit_month: currentMonth
   }).eq('phone_number', targetPhone);
       const { data: targetUser } = await supabase.from('users').select('*').eq('phone_number', targetPhone).single();
       if (targetUser) {
-        await envoyerTexte(targetPhone, t(targetUser, 'congrats_approved').replace('{quota}', QUOTA_DEFAUT_APPROBATION), phoneId);
-        await envoyerTexte(targetPhone, t(targetUser, 'guide_usage'), phoneId); 
+        await envoyerTexte(targetPhone, t(targetUser, 'congrats_approved').replace('{quota}', welcomeQuota), phoneId);
+        await envoyerTexte(targetPhone, t(targetUser, 'guide_usage'), phoneId);
       }
-      return await envoyerTexte(phone, `✅ ${targetPhone} validé avec ${QUOTA_DEFAUT_APPROBATION} reçus.`, phoneId);
+
+      if (referrerPhone) {
+        const { data: referrer } = await supabase.from('users').select('*').eq('phone_number', referrerPhone).single();
+        if (referrer) {
+          const newReferrerQuota = (referrer.receipt_quota || 0) + REFERRAL_BONUS_PARRAIN;
+          await supabase.from('users').update({ receipt_quota: newReferrerQuota }).eq('phone_number', referrerPhone);
+          await envoyerTexte(referrerPhone,
+            `🎉 ${targetUser.shop_name} a rejoint B-Ticket grâce à toi ! +${REFERRAL_BONUS_PARRAIN} reçus offerts, nouveau solde : ${newReferrerQuota}. On est ensemble 🤝`,
+            phoneId);
+        }
+      }
+
+      return await envoyerTexte(phone, `✅ ${targetPhone} validé avec ${welcomeQuota} reçus.${referrerPhone ? ' Parrain récompensé.' : ''}`, phoneId);
     }
 
     if (interactiveId && interactiveId.startsWith('recharge_')) {
@@ -1053,14 +1074,23 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
 
   if (!user) {
     if (!conv) {
-      await supabase.from('conversations').upsert({ phone_number: phone, step: 'ONBOARDING_FIRST_NAME' });
+      let referredBy = null;
+      const parrainMatch = text && text.match(/^PARRAIN\s+(\d{8,15})/i);
+      if (parrainMatch && parrainMatch[1] !== phone) {
+        referredBy = parrainMatch[1];
+      }
+      await supabase.from('conversations').upsert({
+        phone_number: phone,
+        step: 'ONBOARDING_FIRST_NAME',
+        data: { referred_by: referredBy }
+      });
       return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nC'est quoi ton prénom ?", phoneId);
     }
 
     if (conv.step === 'ONBOARDING_FIRST_NAME') {
       await supabase.from('conversations').update({
         step: 'ONBOARDING_SHOP_NAME',
-        data: { first_name: text.trim() }
+        data: { ...conv.data, first_name: text.trim() }
       }).eq('phone_number', phone);
       return await envoyerTexte(phone, `Enchanté ${text.trim()} ! 👋\n\nC'est quoi le nom de ta boutique ?`, phoneId);
     }
@@ -1121,7 +1151,8 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
         shop_name: conv.data.shop_name,
         logo_url: logoUrl,
         is_approved: false,
-        receipt_quota: 0
+        receipt_quota: 0,
+        referred_by: conv.data.referred_by || null
       }]);
 
       if (conv.data.catalog_items && conv.data.catalog_items.length > 0) {
@@ -1252,6 +1283,14 @@ if (interactiveId.startsWith('prod_')) {
     return;
   }
   // ⬆️ FIN NOUVEAU
+
+  if (text && text.toLowerCase().trim() === 'parrainage') {
+    const { count: filleuls } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('referred_by', user.phone_number).eq('is_approved', true);
+    const lien = `https://wa.me/${BOT_WHATSAPP_NUMBER}?text=PARRAIN%20${user.phone_number}`;
+    return await envoyerTexte(phone,
+      `🤝 *Parraine un commerçant*\n\nPartage ce lien :\n${lien}\n\nQuand ton contact s'inscrit et que son compte est validé, tu reçois +${REFERRAL_BONUS_PARRAIN} reçus, et lui reçoit un bonus de bienvenue.\n\nCommerçants déjà parrainés : *${filleuls || 0}*`,
+      phoneId);
+  }
    // ⬇️ NOUVEAU : réception de la quantité / prix négocié
   if (conv && conv.step === 'NEGOTIATE_PRICE' && text) {
     const prod = conv.data.current_product;
