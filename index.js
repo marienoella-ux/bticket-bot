@@ -1297,8 +1297,13 @@ if (interactiveId.startsWith('prod_')) {
   if (text && text.toLowerCase().trim() === 'parrainage') {
     const { count: filleuls } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('referred_by', user.phone_number).eq('is_approved', true);
     const lien = `https://wa.me/${BOT_WHATSAPP_NUMBER}?text=PARRAIN%20${user.phone_number}`;
+
+    await envoyerTexte(phone,
+      `🤝 *Ton parrainage*\n\nCommerçants déjà parrainés : *${filleuls || 0}*\nÀ chaque inscription validée, tu reçois +${REFERRAL_BONUS_PARRAIN} reçus.\n\n👇 Transfère le message ci-dessous à qui tu veux :`,
+      phoneId);
+
     return await envoyerTexte(phone,
-      `🤝 *Parraine un commerçant*\n\nPartage ce lien :\n${lien}\n\nQuand ton contact s'inscrit et que son compte est validé, tu reçois +${REFERRAL_BONUS_PARRAIN} reçus, et lui reçoit un bonus de bienvenue.\n\nCommerçants déjà parrainés : *${filleuls || 0}*`,
+      `🧾 J'utilise *B-Ticket* pour faire des reçus pro directement sur WhatsApp, sans rien installer. Essaie, tu démarres avec des reçus offerts 👇\n\n${lien}`,
       phoneId);
   }
    // ⬇️ NOUVEAU : réception de la quantité / prix négocié
