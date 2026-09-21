@@ -198,7 +198,7 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
 //AIDE
 async function envoyerAide(phone, user, phoneId) {
   const msg = `❓ *AIDE B-TICKET*\n\n` +
-    `*Mode Express* — envoyez directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
+    `*Mode Express* — envoie directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
     `*Menu guidé* — envoie *MENU* pour choisir un article dans ton catalogue, consulter tes ventes, ou revoir cette aide.\n\n` +
     `Solde actuel : *${user.receipt_quota} reçus*`;
   return await envoyerTexte(phone, msg, phoneId);
