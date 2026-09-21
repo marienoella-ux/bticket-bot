@@ -1130,29 +1130,53 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
         data: { ...conv.data, shop_name: text.trim(), catalog_items: [] }
       }).eq('phone_number', phone);
       return await envoyerTexte(phone,
-        `Parfait ! Dernière étape : dis-moi ce que tu vends.\n\n` +
-        `Envoie *Nom, Prix* (ex: Coupe, 1500), un article à la fois.\n` +
-        `Écris *FIN* quand tu as fini, ou *PASSER* pour le faire plus tard.`,
+        "Parfait ! Envoie maintenant tes articles, un par ligne, au format *Nom, Prix* :\n\n_Exemple :_\nRobe, 5000\nChaussures, 8000\nSac, 12000\n\nOu écris *PASSER* pour le faire plus tard.",
         phoneId);
     }
 
     if (conv.step === 'ONBOARDING_CATALOG') {
       const tLower = text.trim().toLowerCase();
-      if (tLower === 'fin' || tLower === 'passer') {
-        await supabase.from('conversations').update({ step: 'ONBOARDING_LOGO', data: conv.data }).eq('phone_number', phone);
+      if (tLower === 'passer') {
+        await supabase.from('conversations').update({
+          step: 'ONBOARDING_LOGO',
+          data: { ...conv.data, catalog_items: [] }
+        }).eq('phone_number', phone);
         return await envoyerTexte(phone,
           "📷 Une dernière chose, si tu veux : envoie une photo de ton logo.\n\nOu écris *PASSER*, tu pourras l'ajouter n'importe quand.",
           phoneId);
       }
 
-      const parts = text.split(',').map(p => p.trim());
-      const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
-      if (parts.length === 2 && parts[0] && price > 0) {
-        const items = [...(conv.data.catalog_items || []), { name: parts[0], price }];
-        await supabase.from('conversations').update({ data: { ...conv.data, catalog_items: items } }).eq('phone_number', phone);
-        return await envoyerTexte(phone, `✅ *${parts[0]}* ajouté (${price.toLocaleString('fr-FR')} FCFA). Un autre ? Sinon écris *FIN*.`, phoneId);
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const items = [];
+      const invalidLines = [];
+      for (const line of lines) {
+        const parts = line.split(',').map(p => p.trim());
+        const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
+        if (parts.length === 2 && parts[0] && price > 0) {
+          items.push({ name: parts[0], price });
+        } else {
+          invalidLines.push(line);
+        }
       }
-      return await envoyerTexte(phone, "Format non reconnu. Exemple : *Coupe, 1500* — ou écris *FIN*.", phoneId);
+
+      if (items.length === 0) {
+        return await envoyerTexte(phone,
+          "Aucun article reconnu. Format attendu : *Nom, Prix*, un par ligne.\n\n_Exemple :_\nRobe, 5000\nSac, 12000",
+          phoneId);
+      }
+
+      await supabase.from('conversations').update({
+        step: 'ONBOARDING_LOGO',
+        data: { ...conv.data, catalog_items: items }
+      }).eq('phone_number', phone);
+
+      let confirmMsg = `✅ *${items.length} article(s) enregistré(s)*.`;
+      if (invalidLines.length > 0) {
+        confirmMsg += `\n⚠️ ${invalidLines.length} ligne(s) ignorée(s) (format non reconnu).`;
+      }
+      confirmMsg += `\n\n📷 Une dernière chose, si tu veux : envoie une photo de ton logo.\n\nOu écris *PASSER*, tu pourras l'ajouter n'importe quand.`;
+
+      return await envoyerTexte(phone, confirmMsg, phoneId);
     }
 
     if (conv.step === 'ONBOARDING_LOGO') {
@@ -1237,8 +1261,10 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
       }
     }
     if (interactiveId === 'catalog_add') {
-      await supabase.from('conversations').upsert({ phone_number: phone, step: 'ADD_PRODUCT_NAME' });
-      return await envoyerTexte(phone, "Nom du nouvel article ?", phoneId);
+      await supabase.from('conversations').upsert({ phone_number: phone, step: 'ADD_PRODUCTS_BULK' });
+      return await envoyerTexte(phone,
+        "Envoie tes articles à ajouter, un par ligne, au format *Nom, Prix* :\n\n_Exemple :_\nRobe, 5000\nChaussures, 8000",
+        phoneId);
     }
 
     if (interactiveId === 'btn_add_more') {
@@ -1370,20 +1396,31 @@ if (interactiveId.startsWith('prod_')) {
     return await envoyerTexte(phone, "✅ *Demande transmise.*\n\nTu recevras une confirmation dès que le paiement est vérifié.", phoneId);
   }
   
-  // 4. Nouveaux ADD_PRODUCT_NAME / ADD_PRODUCT_PRICE
-    if (conv && conv.step === 'ADD_PRODUCT_NAME' && text) {
-    await supabase.from('conversations').update({ step: 'ADD_PRODUCT_PRICE', data: { name: text.trim() } }).eq('phone_number', phone);
-    return await envoyerTexte(phone, `Prix pour *${text.trim()}* ?`, phoneId);
-  }
-
-  if (conv && conv.step === 'ADD_PRODUCT_PRICE' && text) {
-    const price = parseInt(text.replace(/[^0-9]/g, ''), 10);
-    if (!price || price <= 0) {
-      return await envoyerTexte(phone, "Prix invalide, réessaie (chiffres uniquement).", phoneId);
+  // 4. Ajout d'articles en masse au catalogue
+  if (conv && conv.step === 'ADD_PRODUCTS_BULK' && text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const items = [];
+    const invalidLines = [];
+    for (const line of lines) {
+      const parts = line.split(',').map(p => p.trim());
+      const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
+      if (parts.length === 2 && parts[0] && price > 0) {
+        items.push({ user_phone: phone, name: parts[0], price });
+      } else {
+        invalidLines.push(line);
+      }
     }
-    await supabase.from('products').insert({ user_phone: phone, name: conv.data.name, price });
+
+    if (items.length === 0) {
+      return await envoyerTexte(phone, "Aucun article reconnu. Format attendu : *Nom, Prix*, un par ligne.", phoneId);
+    }
+
+    await supabase.from('products').insert(items);
     await supabase.from('conversations').delete().eq('phone_number', phone);
-    return await envoyerTexte(phone, `✅ *${conv.data.name}* ajouté à ${price.toLocaleString('fr-FR')} FCFA.`, phoneId);
+
+    let msg = `✅ *${items.length} article(s) ajouté(s)* à ton catalogue.`;
+    if (invalidLines.length > 0) msg += `\n⚠️ ${invalidLines.length} ligne(s) ignorée(s).`;
+    return await envoyerTexte(phone, msg, phoneId);
   }
 
   // ------------------------------------------
