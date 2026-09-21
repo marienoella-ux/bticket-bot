@@ -10,7 +10,7 @@ const TARIF_REF_FCFA = 35;        // prix moyen pondéré par reçu, sert à con
 const QUOTA_DEFAUT_APPROBATION = 15;
 const REFERRAL_BONUS_PARRAIN = 10;
 const REFERRAL_BONUS_FILLEUL = 5;
-const BOT_WHATSAPP_NUMBER = "[NUMÉRO_WHATSAPP_DU_BOT_ICI]"; // format E.164 sans le +, ex: 237690000000
+const BOT_WHATSAPP_NUMBER = "237678107193"; // format E.164 sans le +
 
 const app = express();
 
@@ -1049,6 +1049,25 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
   let { data: user } = await supabase.from('users').select('*').eq('phone_number', phone).single();
   const { data: conv } = await supabase.from('conversations').select('*').eq('phone_number', phone).single();
 
+  // --- Détection du lien de parrainage, AVANT toute autre logique ---
+  const parrainMatch = text && text.match(/^PARRAIN\s+(\d{8,15})/i);
+  if (parrainMatch) {
+    if (user) {
+      return await envoyerTexte(phone,
+        "Tu es déjà inscrit sur B-Ticket — ce lien est réservé aux nouveaux commerçants. Envoie *MENU* pour voir tes options.",
+        phoneId);
+    }
+    if (parrainMatch[1] === phone) {
+      return await envoyerTexte(phone, "Tu ne peux pas utiliser ton propre lien de parrainage 😉", phoneId);
+    }
+    await supabase.from('conversations').upsert({
+      phone_number: phone,
+      step: 'ONBOARDING_FIRST_NAME',
+      data: { referred_by: parrainMatch[1] }
+    });
+    return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nC'est quoi ton prénom ?", phoneId);
+  }
+
   // ⬇️ NOUVEAU : réception d'une image pendant AWAITING_LOGO — à placer juste après le chargement de conv
   if (imageId && conv && conv.step === 'AWAITING_LOGO') {
     await supabase.from('conversations').delete().eq('phone_number', phone);
@@ -1074,16 +1093,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
 
   if (!user) {
     if (!conv) {
-      let referredBy = null;
-      const parrainMatch = text && text.match(/^PARRAIN\s+(\d{8,15})/i);
-      if (parrainMatch && parrainMatch[1] !== phone) {
-        referredBy = parrainMatch[1];
-      }
-      await supabase.from('conversations').upsert({
-        phone_number: phone,
-        step: 'ONBOARDING_FIRST_NAME',
-        data: { referred_by: referredBy }
-      });
+      await supabase.from('conversations').upsert({ phone_number: phone, step: 'ONBOARDING_FIRST_NAME' });
       return await envoyerTexte(phone, "Bienvenue sur *B-Ticket* ! 🧾\n\nC'est quoi ton prénom ?", phoneId);
     }
 
