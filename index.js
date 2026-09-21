@@ -629,7 +629,7 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       ctx.textAlign = 'right';
       ctx.fillText('via B-Ticket', contentRight, 90);
     } else {
-      const badgeW = 260, badgeH = 88;
+      const badgeW = 210, badgeH = 88;
       ctx.fillStyle = encreMarche;
       drawRoundRect(ctx, contentX, 80, badgeW, badgeH, 12);
       ctx.fill();
@@ -642,17 +642,17 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       ctx.globalAlpha = 0.35;
       ctx.setLineDash([5, 5]);
       ctx.beginPath();
-      ctx.moveTo(contentX + 88, 96);
-      ctx.lineTo(contentX + 88, 80 + badgeH - 16);
+      ctx.moveTo(contentX + 58, 96);
+      ctx.lineTo(contentX + 58, 80 + badgeH - 16);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
       ctx.textAlign = 'left';
       ctx.fillStyle = ambreVif;
       ctx.font = 'bold 34px Georgia, serif';
-      ctx.fillText('B', contentX + 26, 80 + badgeH / 2 + 12);
+      ctx.fillText('B', contentX + 24, 80 + badgeH / 2 + 12);
       ctx.fillStyle = papierTicket;
-      ctx.fillText('Ticket', contentX + 110, 80 + badgeH / 2 + 12);
+      ctx.fillText('Ticket', contentX + 72, 80 + badgeH / 2 + 12);
 
       ctx.fillStyle = encreMarche;
       ctx.font = 'bold 36px Georgia, serif';
@@ -732,7 +732,11 @@ async function genererEtEnvoyerRecu(phone, user, items, clientName, phoneId) {
       rowY += itemRowHeight;
     });
 
-    const totalBoxWidth = 440;
+    ctx.font = 'bold 26px Georgia, serif';
+    const totalLabelWidth = ctx.measureText('TOTAL PAYÉ').width;
+    ctx.font = 'bold 34px ui-monospace, monospace';
+    const totalAmountWidth = ctx.measureText(`${totalAmount.toLocaleString('fr-FR')} FCFA`).width;
+    const totalBoxWidth = Math.max(360, totalLabelWidth + 50 + totalAmountWidth);
     const totalBoxX = contentRight - totalBoxWidth;
 
     ctx.strokeStyle = encreMarche;
