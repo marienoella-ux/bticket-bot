@@ -54,7 +54,9 @@ const translations = {
       "⚡ *Vente rapide* : `Produit, Quantité, Prix` (ex: Sac de riz, 2, 30000)\n\n" +
       "📋 *MENU* — catalogue, historique de ventes, aide\n" +
       "🖼️ *LOGO* — ajouter ton logo sur tes reçus\n" +
-      "💳 *RECHARGE* — recharger ton solde de reçus\n\n" +
+      "💳 *RECHARGE* — recharger ton solde de reçus\n" +
+      "🤝 *PARRAINAGE* — invite d'autres commerçants et gagne des reçus\n" +
+      "🌐 *LANGUE* — changer la langue (français/anglais)\n\n" +
       "🎁 Tu reçois 15 reçus gratuits chaque 1er du mois, en plus de ton solde."
   },
   en: {
@@ -73,8 +75,10 @@ const translations = {
       "⚡ *Quick Sale*: `Product, Quantity, Price` (e.g., Bag of rice, 2, 30000)\n\n" +
       "📋 *MENU* — catalog, sales history, help\n" +
       "🖼️ *LOGO* — add your logo to your receipts\n" +
-      "💳 *TOP-UP* — top up your receipt balance\n\n" +
-      "🎁 You receive 15 free receipts on the 1st of every month, in addition to your balance."
+      "💳 *TOP-UP* — top up your receipt balance\n" +
+      "🤝 *REFERRAL* — invite other vendors and earn receipts\n" +
+      "🌐 *LANGUAGE* — switch language (French/English)\n\n" +
+      "🎁 You get 15 free receipts on the 1st of every month, on top of your balance."
   }
 };
 
@@ -201,8 +205,13 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
 //AIDE
 async function envoyerAide(phone, user, phoneId) {
   const msg = `❓ *AIDE B-TICKET*\n\n` +
-    `*Mode Express* — envoie directement :\n\`Produit, Quantité, Prix total\`\n_Exemple :_ Sac de riz, 2, 30000\n\n` +
-    `*Menu guidé* — envoie *MENU* pour choisir un article dans ton catalogue, consulter tes ventes, ou revoir cette aide.\n\n` +
+    `Voici tous les mots qui déclenchent une action :\n\n` +
+    `⚡ *Produit, Quantité, Prix* — vente rapide (ex: Sac de riz, 2, 30000)\n` +
+    `📋 *MENU* — catalogue, ventes, aide\n` +
+    `🖼️ *LOGO* — ajouter ton logo aux reçus\n` +
+    `💳 *RECHARGE* — recharger ton solde\n` +
+    `🤝 *PARRAINAGE* — ton lien à partager, gagne des reçus\n` +
+    `🌐 *LANGUE* — changer la langue\n\n` +
     `Solde actuel : *${user.receipt_quota} reçus*`;
   return await envoyerTexte(phone, msg, phoneId);
 }
@@ -1407,7 +1416,7 @@ if (interactiveId.startsWith('prod_')) {
   }
 
   // MENU PAR DÉFAUT SI AUCUNE COMMANDE N'EST RECONNUE
-  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\nOu envoyez *MENU* pour toutes les options.`;
+  const defaultMessage = `${t(user, 'welcome')}\n\n${t(user, 'express_prompt')}\n\nEnvoie *AIDE* pour voir toutes les commandes, ou *MENU* pour naviguer.`;
   return await envoyerTexte(phone, defaultMessage, phoneId);
 }
 
