@@ -1519,6 +1519,12 @@ if (interactiveId.startsWith('prod_')) {
       }
       await autoSaveProducts(user.phone_number, items);
       return await afficherRecuEbauche(phone, user, items, clientName, phoneId);
+    } else {
+      const { data: sesArticles } = await supabase.from('products').select('name').eq('user_phone', phone).limit(2);
+      const exemple = (sesArticles || []).map(a => a.name).join(', ');
+      return await envoyerTexte(phone,
+        `Format non reconnu. Écris : Article, Quantité, Prix\n\n_Exemple${exemple ? ' avec tes articles' : ''} :_\n${exemple || 'Robe'}, 2, 10000\n\n💡 Tape *AIDE* si tu es perdu.`,
+        phoneId);
     }
   }
 
