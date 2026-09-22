@@ -268,7 +268,7 @@ async function envoyerBoutonsCart(phone, items, phoneId) {
 }
 
 // 3. Ouvrir le catalogue interactif du vendeur
-async function ouvrirCatalogueVendeur(phone, user, phoneId) {
+async function ouvrirCatalogueVendeur(phone, user, conv, phoneId) {
   const { data: products } = await supabase.from('products').select('*').eq('user_phone', phone).limit(9);
 
   const rows = [{ id: 'catalog_add', title: '➕ Ajouter un article', description: 'Nouveau produit ou service' }];
@@ -289,7 +289,7 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
         interactive: {
           type: 'list',
           header: { type: 'text', text: 'CATALOGUE B-TICKET' },
-          body: { text: 'Sélectionnez un article à ajouter au reçu :' },
+          body: { text: products && products.length > 0 ? 'Tape tes articles d\'un coup : Nom, Quantité, Prix (optionnel) — un par ligne. Ou choisis-en un seul ci-dessous.' : "Ton catalogue est vide — ajoute ton premier article." },
           footer: { text: 'B-Ticket Express' },
           action: {
             button: 'Choisir un produit',
@@ -307,6 +307,12 @@ async function ouvrirCatalogueVendeur(phone, user, phoneId) {
   } catch (err) {
     console.error("Erreur ouvrirCatalogueVendeur:", err.response ? err.response.data : err.message);
   }
+
+  await supabase.from('conversations').upsert({
+    phone_number: phone,
+    step: 'CATALOG_BULK_SELECT',
+    data: { items: (conv && conv.data && conv.data.items) ? conv.data.items : [] }
+  });
 }
 
 async function previsualiserCreditsMensuels() {
@@ -481,6 +487,36 @@ async function autoSaveProducts(userId, items) {
         });
     }
   }
+}
+
+// Traite une saisie groupée d'articles depuis le catalogue (Nom, Quantité, Prix par ligne)
+async function traiterSelectionGroupee(phone, user, text, existingItems) {
+  const { data: products } = await supabase.from('products').select('*').eq('user_phone', phone);
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const items = [...existingItems];
+  const invalidLines = [];
+
+  for (const line of lines) {
+    const parts = line.split(',').map(p => p.trim());
+    const nameQuery = parts[0];
+    if (!nameQuery) { invalidLines.push(line); continue; }
+
+    const product = (products || []).find(p => p.name.toLowerCase() === nameQuery.toLowerCase())
+                  || (products || []).find(p => p.name.toLowerCase().includes(nameQuery.toLowerCase()));
+
+    if (!product) { invalidLines.push(line); continue; }
+
+    const qty = parts[1] ? (parseInt(parts[1].replace(/[^0-9]/g, ''), 10) || 1) : 1;
+    const totalPrice = parts[2]
+      ? parseInt(parts[2].replace(/[^0-9]/g, ''), 10)
+      : product.price * qty;
+
+    if (!totalPrice || totalPrice <= 0) { invalidLines.push(line); continue; }
+
+    items.push({ name: product.name, qty, total_price: totalPrice });
+  }
+
+  return { items, invalidLines };
 }
 // LA LISTE EN ATTENTE
 async function envoyerListeAttente(phone, phoneId) {
@@ -1245,7 +1281,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
       return await envoyerTexte(phone, "❌ Vente annulée.", phoneId);
     }
     if (interactiveId === 'btn_menu_catalog'){
-      return await ouvrirCatalogueVendeur(phone, user, phoneId);
+      return await ouvrirCatalogueVendeur(phone, user, conv, phoneId);
     }
     if (interactiveId === 'btn_menu_sales'){
       return await envoyerHistoriqueVentes(phone, user, phoneId);
@@ -1269,7 +1305,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
 
     if (interactiveId === 'btn_add_more') {
       await supabase.from('conversations').upsert({ phone_number: phone, step: 'BUILDING_CART', data: conv ? conv.data : { items: [] } });
-      return await ouvrirCatalogueVendeur(phone, user, phoneId);
+      return await ouvrirCatalogueVendeur(phone, user, conv, phoneId);
     }
 
     if (interactiveId === 'btn_finish_cart') {
@@ -1421,6 +1457,25 @@ if (interactiveId.startsWith('prod_')) {
     let msg = `✅ *${items.length} article(s) ajouté(s)* à ton catalogue.`;
     if (invalidLines.length > 0) msg += `\n⚠️ ${invalidLines.length} ligne(s) ignorée(s).`;
     return await envoyerTexte(phone, msg, phoneId);
+  }
+
+  // Sélection groupée d'articles depuis la liste catalogue
+  if (conv && conv.step === 'CATALOG_BULK_SELECT' && text && !text.toLowerCase().startsWith('client:')) {
+    const existingItems = conv.data && conv.data.items ? conv.data.items : [];
+    const { items, invalidLines } = await traiterSelectionGroupee(phone, user, text, existingItems);
+
+    if (items.length === existingItems.length) {
+      return await envoyerTexte(phone,
+        "Aucun article reconnu dans ton catalogue. Vérifie l'orthographe, ou choisis directement dans la liste ci-dessus.",
+        phoneId);
+    }
+
+    await supabase.from('conversations').update({ step: 'CART_ACTIVE', data: { items } }).eq('phone_number', phone);
+
+    if (invalidLines.length > 0) {
+      await envoyerTexte(phone, `⚠️ Non reconnu : ${invalidLines.join(' / ')}`, phoneId);
+    }
+    return await envoyerBoutonsCart(phone, items, phoneId);
   }
 
   // ------------------------------------------
