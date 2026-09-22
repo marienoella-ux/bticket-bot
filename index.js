@@ -102,6 +102,13 @@ function t(user, key) {
   return text.replace('{name}', firstName).replace(/\s+/g, ' ');
 }
 
+// Parsing tolérant d'un nombre saisi par l'utilisateur (retire espaces, points, virgules, lettres)
+function parseNombre(str) {
+  if (!str) return NaN;
+  const nettoye = str.replace(/[^\d]/g, '');
+  return nettoye ? parseInt(nettoye, 10) : NaN;
+}
+
 // ==========================================
 // MIDDLEWARE DE SÉCURITÉ WEBHOOK (HMAC-SHA256)
 // ==========================================
@@ -489,7 +496,7 @@ async function autoSaveProducts(userId, items) {
   }
 }
 
-// Traite une saisie groupée d'articles depuis le catalogue (Nom, Quantité, Prix par ligne)
+// Traite une saisie groupée d'articles depuis le catalogue (Nom, Quantité par ligne)
 async function traiterSelectionGroupee(phone, user, text, existingItems) {
   const { data: products } = await supabase.from('products').select('*').eq('user_phone', phone);
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -506,12 +513,8 @@ async function traiterSelectionGroupee(phone, user, text, existingItems) {
 
     if (!product) { invalidLines.push(line); continue; }
 
-    const qty = parts[1] ? (parseInt(parts[1].replace(/[^0-9]/g, ''), 10) || 1) : 1;
-    const totalPrice = parts[2]
-      ? parseInt(parts[2].replace(/[^0-9]/g, ''), 10)
-      : product.price * qty;
-
-    if (!totalPrice || totalPrice <= 0) { invalidLines.push(line); continue; }
+    const qty = parts[1] ? (parseNombre(parts[1]) || 1) : 1;
+    const totalPrice = product.price * qty;
 
     items.push({ name: product.name, qty, total_price: totalPrice });
   }
@@ -1187,7 +1190,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
       const invalidLines = [];
       for (const line of lines) {
         const parts = line.split(',').map(p => p.trim());
-        const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
+        const price = parts.length === 2 ? parseNombre(parts[1]) : NaN;
         if (parts.length === 2 && parts[0] && price > 0) {
           items.push({ name: parts[0], price });
         } else {
@@ -1197,7 +1200,7 @@ if (interactiveId && interactiveId.startsWith('approve_')) {
 
       if (items.length === 0) {
         return await envoyerTexte(phone,
-          "Aucun article reconnu. Format attendu : *Nom, Prix*, un par ligne.\n\n_Exemple :_\nRobe, 5000\nSac, 12000",
+          "Aucun article reconnu. Format attendu : *Nom, Prix*, un par ligne.\n\n_Exemple :_\nRobe, 5000\nSac, 12000\n\n💡 Tape AIDE si tu es perdu.",
           phoneId);
       }
 
@@ -1394,15 +1397,15 @@ if (interactiveId.startsWith('prod_')) {
 
     if (text.includes(',')) {
       const parts = text.split(',');
-      qty = parseInt(parts[0].replace(/[^0-9]/g, ''), 10) || 1;
-      finalPrice = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
+      qty = parseNombre(parts[0]) || 1;
+      finalPrice = parseNombre(parts[1]);
     } else {
-      qty = parseInt(text.replace(/[^0-9]/g, ''), 10) || 1;
+      qty = parseNombre(text) || 1;
       finalPrice = prod.price * qty;
     }
 
     if (!finalPrice || finalPrice <= 0) {
-      return await envoyerTexte(phone, "Montant invalide. Exemple : `2, 4500` ou juste `2`.", phoneId);
+      return await envoyerTexte(phone, "Montant invalide. Exemple : `2, 4500` ou juste `2`.\n\n💡 Tape AIDE si tu es perdu.", phoneId);
     }
 
     const items = [...(conv.data.items || []), { name: prod.name, qty, total_price: finalPrice }];
@@ -1421,10 +1424,10 @@ if (interactiveId.startsWith('prod_')) {
     const parts = text.split(',').map(p => p.trim());
     const payerName = parts.length >= 2 ? parts[0] : null;
     const amountRaw = parts.length >= 2 ? parts[1] : parts[0];
-    const amount = parseInt(amountRaw.replace(/[^0-9]/g, ''), 10);
+    const amount = parseNombre(amountRaw);
 
     if (!amount || amount <= 0) {
-      return await envoyerTexte(phone, "Format non reconnu. Envoie : *Nom du compte, Montant* (ex: Jean Mballa, 5000)", phoneId);
+      return await envoyerTexte(phone, "Format non reconnu. Envoie : *Nom du compte, Montant* (ex: Jean Mballa, 5000)\n\n💡 Tape AIDE si tu es perdu.", phoneId);
     }
 
     await supabase.from('conversations').delete().eq('phone_number', phone);
@@ -1439,7 +1442,7 @@ if (interactiveId.startsWith('prod_')) {
     const invalidLines = [];
     for (const line of lines) {
       const parts = line.split(',').map(p => p.trim());
-      const price = parts.length === 2 ? parseInt(parts[1].replace(/[^0-9]/g, ''), 10) : NaN;
+      const price = parts.length === 2 ? parseNombre(parts[1]) : NaN;
       if (parts.length === 2 && parts[0] && price > 0) {
         items.push({ user_phone: phone, name: parts[0], price });
       } else {
@@ -1448,7 +1451,7 @@ if (interactiveId.startsWith('prod_')) {
     }
 
     if (items.length === 0) {
-      return await envoyerTexte(phone, "Aucun article reconnu. Format attendu : *Nom, Prix*, un par ligne.", phoneId);
+      return await envoyerTexte(phone, "Aucun article reconnu. Format attendu : *Nom, Prix*, un par ligne.\n\n💡 Tape AIDE si tu es perdu.", phoneId);
     }
 
     await supabase.from('products').insert(items);
@@ -1465,8 +1468,10 @@ if (interactiveId.startsWith('prod_')) {
     const { items, invalidLines } = await traiterSelectionGroupee(phone, user, text, existingItems);
 
     if (items.length === existingItems.length) {
+      const { data: sesArticles } = await supabase.from('products').select('name').eq('user_phone', phone).limit(2);
+      const exemple = (sesArticles || []).map(a => a.name).join(', ') || 'Robe';
       return await envoyerTexte(phone,
-        "Aucun article reconnu dans ton catalogue. Vérifie l'orthographe, ou choisis directement dans la liste ci-dessus.",
+        `Aucun article reconnu. Écris le nom exactement comme dans ton catalogue.\n\n_Exemple avec tes articles :_\n${exemple}${sesArticles && sesArticles[0] ? ', 2' : ''}\n\n💡 Tape AIDE si tu es perdu.`,
         phoneId);
     }
 
@@ -1499,8 +1504,8 @@ if (interactiveId.startsWith('prod_')) {
       const parts = line.split(',').map(p => p.trim());
       if (parts.length >= 3) {
         const prodName = parts[0];
-        const qty = parseInt(parts[1].replace(/[^0-9]/g, ''), 10);
-        const totalPrice = parseInt(parts[2].replace(/[^0-9]/g, ''), 10);
+        const qty = parseNombre(parts[1]);
+        const totalPrice = parseNombre(parts[2]);
 
         if (prodName && !isNaN(qty) && !isNaN(totalPrice) && qty > 0 && totalPrice > 0) {
           items.push({ name: prodName, qty: qty, total_price: totalPrice });
