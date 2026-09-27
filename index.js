@@ -223,14 +223,15 @@ async function envoyerHistoriqueVentes(phone, user, phoneId) {
 async function envoyerAide(phone, user, phoneId) {
   const msg = `❓ *AIDE B-TICKET*\n\n` +
     `*Pour vendre*\n` +
-    `⚡ \`Produit, Quantité, Prix\`\n` +
-    `📋 *MENU* — catalogue, ventes, aide\n\n` +
+    `👉 \`Produit, Quantité, Prix\` — reçu en quelques secondes\n` +
+    `_Exemple :_ Sac de riz, 2, 30000\n\n` +
+    `Ou tape *MENU* pour choisir dans ton catalogue.\n\n` +
     `*Pour gérer ton compte*\n` +
-    `🖼️ *LOGO*\n` +
-    `💳 *RECHARGE*\n` +
-    `🤝 *PARRAINAGE*\n` +
-    `🌐 *LANGUE*\n\n` +
-    `💰 Solde actuel : *${user.receipt_quota} reçus*`;
+    `LOGO — ajouter ton logo aux reçus\n` +
+    `RECHARGE — recharger ton solde\n` +
+    `PARRAINAGE — invite et gagne des reçus\n` +
+    `LANGUE — changer la langue\n\n` +
+    `Solde actuel : *${user.receipt_quota} reçus*`;
   return await envoyerTexte(phone, msg, phoneId);
 }
 
