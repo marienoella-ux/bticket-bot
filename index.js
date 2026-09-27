@@ -50,17 +50,18 @@ const translations = {
     welcome_new: "Bienvenue sur B-Ticket Express {name} !\n\nTon compte est en cours d'activation par notre équipe administrative. Tu recevras une notification très rapidement.",
     congrats_approved: "🎉 *Félicitations {name} !*\n\nTon compte B-Ticket est activé.\n💳 *{quota} reçus* offerts pour démarrer.\n\nOn est ensemble ! 🤝",
     recharge_success: "💳 *Recharge confirmée {name} !*\n\n+{quota} reçus\nNouveau solde : *{total} reçus*",
-    guide_usage: "📘 *Comment utiliser B-Ticket*\n\n" +
-      "*Pour vendre*\n" +
-      "⚡ Envoie : `Produit, Quantité, Prix`\n" +
-      "_Exemple :_ Sac de riz, 2, 30000\n\n" +
-      "📋 Ou tape *MENU* pour choisir depuis ton catalogue\n\n" +
-      "*Pour gérer ton compte*\n" +
-      "🖼️ *LOGO* — ajouter ton logo aux reçus\n" +
-      "💳 *RECHARGE* — recharger ton solde\n" +
-      "🤝 *PARRAINAGE* — invite et gagne des reçus\n" +
-      "🌐 *LANGUE* — changer la langue\n" +
-      "❓ *AIDE* — revoir cette liste\n\n" +
+    guide_usage: "📘 *Bienvenue dans B-Ticket !*\n\n" +
+      "👉 *À chaque vente, tape juste :*\n" +
+      "`Produit, Quantité, Prix`\n" +
+      "_Exemple :_ Sac de riz, 2, 30000\n" +
+      "Ton reçu arrive en quelques secondes.\n\n" +
+      "_Tu préfères choisir dans ton catalogue ? Tape_ *MENU*.\n\n" +
+      "*Pour gérer ton compte :*\n" +
+      "LOGO — ajouter ton logo aux reçus\n" +
+      "RECHARGE — recharger ton solde\n" +
+      "PARRAINAGE — invite et gagne des reçus\n" +
+      "LANGUE — changer la langue\n" +
+      "AIDE — revoir ce message\n\n" +
       "🎁 *15 reçus offerts* chaque 1er du mois, en plus de ton solde."
   },
   en: {
@@ -75,18 +76,19 @@ const translations = {
     congrats_approved: "🎉 Congratulations {name}! Your B-Ticket account has been approved with a quota of {quota} receipts.",
     recharge_success: "{name} Your account has been topped up with {quota} receipts! New balance: {total} receipts.",
     // In translations.fr, next to congrats_approved
-    guide_usage: "📘 *How to Use B-Ticket*\n\n" +
-      "*To sell*\n" +
-      "⚡ Send: `Product, Quantity, Price`\n" +
-      "_Example:_ Bag of rice, 2, 30000\n\n" +
-      "📋 Or type *MENU* to choose from your catalog\n\n" +
-      "*To manage your account*\n" +
-      "🖼️ *LOGO* — add your logo to your receipts\n" +
-      "💳 *TOP-UP* — top up your balance\n" +
-      "🤝 *REFERRAL* — invite and earn receipts\n" +
-      "🌐 *LANGUAGE* — switch language\n" +
-      "❓ *HELP* — see this list again\n\n" +
-      "🎁 *15 free receipts* on the 1st of every month, on top of your balance."
+    guide_usage: "📘 *Welcome to B-Ticket!*\n\n" +
+      "👉 *For every sale, just type:*\n" +
+      "`Product, Quantity, Price`\n" +
+      "_Example:_ Bag of rice, 2, 30000\n" +
+      "Your receipt arrives in seconds.\n\n" +
+      "_Prefer picking from your catalog? Type_ *MENU*.\n\n" +
+      "*To manage your account:*\n" +
+      "LOGO — add your logo to receipts\n" +
+      "RECHARGE — top up your balance\n" +
+      "REFERRAL — invite and earn receipts\n" +
+      "LANGUAGE — switch language\n" +
+      "HELP — see this message again\n\n" +
+      "🎁 *15 free receipts* every 1st of the month, on top of your balance."
   }
 };
 
